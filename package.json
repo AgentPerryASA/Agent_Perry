@@ -11,7 +11,10 @@
     "url": "git+https://github.com/AgentPerryASA/Agent_Perry.git"
   },
   "license": "",
-  "contributors": ["ErPreco", "FireStoat3"],
+  "contributors": [
+    "ErPreco",
+    "FireStoat3"
+  ],
   "type": "module",
   "main": "index.js",
   "scripts": {
