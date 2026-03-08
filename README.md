@@ -43,7 +43,7 @@ and you're good to go!
 
 After installing the project, run:
 
-```
+```sh
 example command
 ```
 
