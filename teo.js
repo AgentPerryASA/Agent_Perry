@@ -1,6 +1,13 @@
 import 'dotenv/config'
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client";
 
+/** @type { function ({x:number, y:number}, {x:number, y:number}): number } */
+function distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
+  const dx = Math.abs(Math.round(x1) - Math.round(x2))
+  const dy = Math.abs(Math.round(y1) - Math.round(y2))
+  return dx + dy;
+}
+
 const socket = DjsConnect();
 
 // Fetch personal info
@@ -12,6 +19,22 @@ socket.onYou(({ id, name, x, y, score }) => {
   me.y = y ? y : -1;
   me.score = score;
 })
+
+let carriedParcelsCount = 0;
+
+const tiles = new Map();
+tiles.set('green', []);
+tiles.set('red', []);
+
+socket.onMap((w, h, t) => {
+  for (let i = 0; i < t.length; i++) {
+    if (t[i].type == '1') {
+      tiles.get('green').push({ x: t[i].x, y: t[i].y });
+    } else if (t[i].type == '2') {
+      tiles.get('red').push({ x: t[i].x, y: t[i].y });
+    }
+  }
+});
 
 // Constantly get parcels around us
 const parcels = new Map();
@@ -56,6 +79,22 @@ class GoPickUpOption extends Option {
   }
 }
 
+class GoPutDownOption extends Option {
+  x;
+  y;
+
+  constructor(type, x, y) {
+    super(type);
+
+    this.x = x;
+    this.y = y;
+  }
+
+  isEqual(option) {
+    return this.baseIsEqual(option) && this.x == option.x && this.y == option.y;
+  }
+}
+
 class GoToOption extends Option {
   x;
   y;
@@ -74,7 +113,6 @@ class GoToOption extends Option {
 
 class Agent {
   currentIntention = null;
-  #isRunning = false;
 
   async pushIntention(option) { }
 
@@ -119,6 +157,7 @@ class Intention {
       this.#started = true;
     }
 
+    console.log(this.predicate.type);
     for (const plan of planLibrary) {
       if (plan.isApplicable(this.predicate)) {
         await plan.execute(this.predicate);
@@ -145,11 +184,34 @@ class GoPickUpPlan extends Plan {
 
   async execute(predicate) {
     const subOption = new GoToOption('go_to', predicate.x, predicate.y);
-    const subIntention = new Intention(subOption);
-    await subIntention.achieve();
+    await this.subIntention(subOption);
 
-    await socket.emitPickup();
+    const result = await socket.emitPickup();
+    if (result.length != 0) {
+      carriedParcelsCount++;
+    }
+
     console.log("Picked up: ", predicate);
+  }
+}
+
+class GoPutDownPlan extends Plan {
+  isApplicable(predicate) {
+    return predicate.type == 'go_put_down';
+  }
+
+  async execute(predicate) {
+    const subOption = new GoToOption('go_to', predicate.x, predicate.y);
+    await this.subIntention(subOption);
+
+    // TODO
+    const result = await socket.emitPutdown();
+    console.log(result);
+    if (result.length != 0) {
+      carriedParcelsCount = 0;
+    }
+
+    // console.log("Put down: ", predicate);
   }
 }
 
@@ -181,7 +243,6 @@ class GoToPlan extends Plan {
         movedVertically = await socket.emitMove('down');
       }
 
-      // console.log(movedVertically);
       if (movedVertically) {
         me.y = movedVertically.y;
       }
@@ -193,18 +254,55 @@ class GoToPlan extends Plan {
       await new Promise(res => setTimeout(res, 100));
     }
 
-    console.log('Target reached');
+    // console.log('Target reached');
   }
 }
 
 function generateOption() {
+  if (carriedParcelsCount >= 4) {
+    const redTiles = tiles.get('red');
+    let nearest = Number.MAX_VALUE;
+    let bestOption;
+    for (let i = 0; i < redTiles.length; i++) {
+      const x = redTiles[i].x;
+      const y = redTiles[i].y;
+      let current_d = distance({ x, y }, me)
+      if (current_d < nearest) {
+        bestOption = { x, y };
+        nearest = current_d
+      }
+    }
+
+    const option = new GoPutDownOption('go_put_down', bestOption.x, bestOption.y);
+    agent.pushIntention(option);
+    return;
+  }
+
   const options = []
   for (const parcel of parcels.values()) {
     if (!parcel.carriedBy) {
       const option = new GoPickUpOption('go_pick_up', parcel.x, parcel.y, parcel.id);
       options.push(option);
-      // options.push({ type: 'go_pick_up', x: parcel.x, y: parcel.y, id: parcel.id });
     }
+  }
+
+  if (options.length == 0) {
+    const greenTiles = tiles.get('green');
+    let nearest = Number.MAX_VALUE;
+    let bestOption;
+    for (let i = 0; i < greenTiles.length; i++) {
+      const x = greenTiles[i].x;
+      const y = greenTiles[i].y;
+      let current_d = distance({ x, y }, me)
+      if (current_d < nearest) {
+        bestOption = { x, y };
+        nearest = current_d
+      }
+    }
+
+    const option = new GoToOption('go_to', bestOption.x, bestOption.y);
+    agent.pushIntention(option);
+    return;
   }
 
   let bestOption;
@@ -212,10 +310,7 @@ function generateOption() {
   // Go to pick up the closes parcel (best option)
   for (const option of options) {
     if (option.type == 'go_pick_up') {
-      // let current_d = distance({ x, y }, me)
-      const dx = Math.abs(Math.round(option.x) - Math.round(me.x))
-      const dy = Math.abs(Math.round(option.y) - Math.round(me.y))
-      let current_d = dx + dy;
+      let current_d = distance(option, me)
       if (current_d < nearest) {
         bestOption = option
         nearest = current_d
@@ -230,10 +325,10 @@ function generateOption() {
 
 const planLibrary = [];
 planLibrary.push(new GoPickUpPlan());
+planLibrary.push(new GoPutDownPlan());
 planLibrary.push(new GoToPlan());
 
 socket.onSensing(generateOption);
 socket.onYou(generateOption);
 
 const agent = new AgentReplace();
-// agent.loop();
