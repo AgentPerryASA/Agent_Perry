@@ -12,12 +12,16 @@ export class Agent {
   // TODO: put them in beliefe
   /** @type { Map<string, IOParcel> } */
   #parcelMap = new Map();
-  #tileMap = {
+  tileMap = {
+    // /** @type { {c:Coordinates, w:number}[][] } */
+    /** @type { number[][] } */
+    tiles: [],
     /** @type { Coordinates[] } */
     green: [],
     /** @type { Coordinates[] } */
     red: []
   }
+
 
   #socket;
   #me;
@@ -33,20 +37,12 @@ export class Agent {
   constructor() {
     this.#me = new Me('', '', new Coordinates(0, 0), 0);
     this.#planLibrary = [];
-    this.#planLibrary.push(new GoToPlan(this));
-    this.#planLibrary.push(new GoPickUpPlan(this));
-    this.#planLibrary.push(new GoPutDownPlan(this));
     this.#intentionList = new IntentionList();
     this.carriedParcelsCount = 0;
 
     this.#socket = DjsConnect();
 
-    const promiseList = this.#startOnSensing();
-    Promise.all(promiseList).then(async () => {
-      // TODO: useless
-      // this.#planLibrary.push(new GoToPlan(this));
-      // this.#planLibrary.push(new GoPickUpPlan(this));
-    })
+    this.init();
   }
 
   get socket() {
@@ -57,18 +53,27 @@ export class Agent {
     return this.#me;
   }
 
-  #startOnSensing() {
+  init() {
     const promiseList = [];
 
     // Keep track of green and red tiles coordinates
     promiseList.push(new Promise(resolve => {
       this.#socket.onMap((w, h, tiles) => {
+        let currentRow = -1;
         for (let i = 0; i < tiles.length; i++) {
           const coordinates = new Coordinates(tiles[i].x, tiles[i].y)
+
+          // Store the map as a matrix
+          if (tiles[i].x != currentRow) {
+            currentRow++;
+            this.tileMap.tiles.push([]);
+          }
+          this.tileMap.tiles[currentRow].push(Number(tiles[i].type));
+
           if (tiles[i].type == '1') {
-            this.#tileMap.green.push(coordinates);
+            this.tileMap.green.push(coordinates);
           } else if (tiles[i].type == '2') {
-            this.#tileMap.red.push(coordinates);
+            this.tileMap.red.push(coordinates);
           }
         }
 
@@ -78,40 +83,49 @@ export class Agent {
 
     // Keep track of agent information
     promiseList.push(new Promise(resolve => {
-      this.#socket.onYou(({ id, name, x, y, score }) => {
-        this.#me = new Me(
-          id,
-          name,
-          // TODO: round to int
-          new Coordinates(x ? x : -1, y ? y : -1),
-          score
-        );
+      this.#socket.onYou(async ({ id, name, x, y, score }) => {
+        // Skip intermediate values (0.6 or 0.4)
+        if ((x && x % 1 == 0) && (y && y % 1 == 0)) {
+          this.#me = new Me(
+            id,
+            name,
+            new Coordinates(x, y),
+            score
+          );
 
-        resolve(true);
+          resolve(true);
+        }
       });
     }));
 
+    Promise.all(promiseList).then(async () => {
+      this.#planLibrary.push(new GoToPlan(this));
+      this.#planLibrary.push(new GoPickUpPlan(this));
+      this.#planLibrary.push(new GoPutDownPlan(this));
+
+      // In case of no changes in the environment, so no sensing events received
+      this.#generateBestIntention();
+
+      this.#startOnSensing();
+    });
+  }
+
+  #startOnSensing() {
     // Keep track of parcels around us
-    promiseList.push(new Promise(resolve => {
-      this.#socket.onSensing(async sensing => {
-        for (const parcel of sensing.parcels) {
-          this.#parcelMap.set(parcel.id, parcel);
+    this.#socket.onSensing(async sensing => {
+      for (const parcel of sensing.parcels) {
+        this.#parcelMap.set(parcel.id, parcel);
+      }
+
+      for (const parcel of this.#parcelMap.values()) {
+        if (sensing.parcels.map(p => p.id).find(id => id == parcel.id) == undefined) {
+          this.#parcelMap.delete(parcel.id);
         }
+      }
 
-        for (const parcel of this.#parcelMap.values()) {
-          if (sensing.parcels.map(p => p.id).find(id => id == parcel.id) == undefined) {
-            this.#parcelMap.delete(parcel.id);
-          }
-        }
-
-        // Constantly generate the best intention based on our sensing
-        await this.#generateBestIntention();
-
-        resolve(true);
-      });
-    }));
-
-    return promiseList;
+      // Constantly generate the best intention based on our sensing
+      await this.#generateBestIntention();
+    });
   }
 
   async #generateBestIntention() {
@@ -120,7 +134,7 @@ export class Agent {
     // Store the intention of delivering the parcels we are carrying
     // TODO: carriedParcelsCount does not listen to carried parcels that are expired
     if (this.carriedParcelsCount >= 1) {
-      for (const redTile of this.#tileMap.red) {
+      for (const redTile of this.tileMap.red) {
         this.#intentionList.goPutDown.push(new GoPutDownIntention(redTile));
       }
     }
@@ -134,7 +148,7 @@ export class Agent {
     }
     // Store the intentions of going to green tiles, if the are no free parcels around us
     if (this.#parcelMap.size == 0) {
-      for (const greenTile of this.#tileMap.green) {
+      for (const greenTile of this.tileMap.green) {
         this.#intentionList.goTo.push(new GoToIntention(greenTile));
       }
     }

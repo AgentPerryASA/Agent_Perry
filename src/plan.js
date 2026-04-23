@@ -3,6 +3,7 @@
 
 import { Agent } from "./agent.js";
 import { GoPickUpIntention, GoToIntention, GoPutDownIntention } from "./intention.js";
+import { PathFinder } from "./path_finder.js";
 
 class PlanBase {
   #agent;
@@ -70,6 +71,17 @@ class PlanBase {
 }
 
 export class GoToPlan extends PlanBase {
+  #pathFinder;
+
+  /**
+   * @param {Agent} agent
+   */
+  constructor(agent) {
+    super(agent);
+
+    this.#pathFinder = new PathFinder(this.agent.tileMap.tiles);
+  }
+
   /**
    * @param {Intention} intention 
    */
@@ -84,44 +96,48 @@ export class GoToPlan extends PlanBase {
     this.isRunning = true;
     this.isStopped = false;
 
-    // TODO: A*?
-    const dst = intention.destinationCoordinates;
-    const a = this.agent.me.coordinates;
+    const end = intention.destinationCoordinates;
+    const a = this.agent.me;
 
-    while (a.x != dst.x || a.y != dst.y) {
-      if (this.isStopped) {
-        this.isRunning = false;
-        return;
-      }
+    console.log(a.coordinates, " -> ", end);
+    const path = this.#pathFinder.search(a.coordinates, end);
 
-      await new Promise(res => setTimeout(res, 100));
+    if (path) {
+      for (const step of path) {
+        if (this.isStopped) {
+          this.isRunning = false;
+          return;
+        }
 
-      if (this.isStopped) {
-        this.isRunning = false;
-        return;
-      }
+        await new Promise(res => setTimeout(res, 100));
 
-      let movedHorizontally;
-      let movedVertically;
+        if (this.isStopped) {
+          this.isRunning = false;
+          return;
+        }
 
-      if (a.x < dst.x) {
-        movedHorizontally = await this.agent.socket.emitMove('right');
-      } else if (a.x > dst.x) {
-        movedHorizontally = await this.agent.socket.emitMove('left');
-      }
+        let movedHorizontally;
+        let movedVertically;
 
-      if (movedHorizontally) {
-        a.x = movedHorizontally.x;
-      }
+        if (a.coordinates.x < step.x) {
+          movedHorizontally = await this.agent.socket.emitMove('right');
+        } else if (a.coordinates.x > step.x) {
+          movedHorizontally = await this.agent.socket.emitMove('left');
+        }
 
-      if (a.y < dst.y) {
-        movedVertically = await this.agent.socket.emitMove('up');
-      } else if (a.y > dst.y) {
-        movedVertically = await this.agent.socket.emitMove('down');
-      }
+        if (movedHorizontally) {
+          a.coordinates.x = movedHorizontally.x;
+        }
 
-      if (movedVertically) {
-        a.y = movedVertically.y;
+        if (a.coordinates.y < step.y) {
+          movedVertically = await this.agent.socket.emitMove('up');
+        } else if (a.coordinates.y > step.y) {
+          movedVertically = await this.agent.socket.emitMove('down');
+        }
+
+        if (movedVertically) {
+          a.coordinates.y = movedVertically.y;
+        }
       }
     }
 
