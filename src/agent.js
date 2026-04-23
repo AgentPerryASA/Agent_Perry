@@ -7,9 +7,10 @@ import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention } from "./intention.js";
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan } from './plan.js';
+import { Beliefs } from "./belief.js"
 
 export class Agent {
-  // TODO: put them in beliefe
+  // TODO: put them in beliefs
   /** @type { Map<string, IOParcel> } */
   #parcelMap = new Map();
   #tileMap = {
@@ -30,13 +31,17 @@ export class Agent {
   #currentPlan;
   carriedParcelsCount;
 
+  /** @type {Beliefs} */
+  #internalBelief;
+
   constructor() {
     this.#me = new Me('', '', new Coordinates(0, 0), 0);
     this.#planLibrary = [];
-    this.#planLibrary.push(new GoToPlan(this));
-    this.#planLibrary.push(new GoPickUpPlan(this));
-    this.#planLibrary.push(new GoPutDownPlan(this));
+    //this.#planLibrary.push(new GoToPlan(this));
+    //this.#planLibrary.push(new GoPickUpPlan(this));
+    //this.#planLibrary.push(new GoPutDownPlan(this));
     this.#intentionList = new IntentionList();
+    this.#internalBelief = new Beliefs()
     this.carriedParcelsCount = 0;
 
     this.#socket = DjsConnect();
@@ -94,6 +99,8 @@ export class Agent {
     // Keep track of parcels around us
     promiseList.push(new Promise(resolve => {
       this.#socket.onSensing(async sensing => {
+        this.#internalBelief.reviseParcelList(sensing.parcels)
+
         for (const parcel of sensing.parcels) {
           this.#parcelMap.set(parcel.id, parcel);
         }
