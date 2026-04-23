@@ -5,7 +5,8 @@
 let cols = 5; //columns in the grid
 let rows = 5; //rows in the grid
 
-let grid = new Array(cols); //array of all the grid points
+// let grid = new Array(cols); //array of all the grid points
+let grid = [];
 
 let openSet = []; //array containing unevaluated grid points
 let closedSet = []; //array containing completely evaluated grid points
@@ -24,9 +25,10 @@ function heuristic(position0, position1) {
 }
 
 //constructor function to create all the grid points as objects containind the data for the points
-function GridPoint(x, y) {
+function GridPoint(x, y, w) {
   this.x = x; //x location of the grid point
   this.y = y; //y location of the grid point
+  this.w = w; //weight (0=no-walkable, walkable otherwise)
   this.f = 0; //total cost function
   this.g = 0; //cost function from start to the current grid point
   this.h = 0; //heuristic estimated cost function from current grid point to the goal
@@ -35,44 +37,59 @@ function GridPoint(x, y) {
 
   // update neighbors array for a given grid point
   this.updateNeighbors = function (grid) {
+    if (this.w == 0) return;
+
     let i = this.x;
     let j = this.y;
-    if (i < cols - 1) {
-      this.neighbors.push(grid[i + 1][j]);
-    }
-    if (i > 0) {
+
+    // top
+    if (i > 0 && grid[i - 1][j].w > 0) {
       this.neighbors.push(grid[i - 1][j]);
     }
-    if (j < rows - 1) {
-      this.neighbors.push(grid[i][j + 1]);
+    // bottom
+    if (i < rows - 1 && grid[i + 1][j].w > 0) {
+      this.neighbors.push(grid[i + 1][j]);
     }
-    if (j > 0) {
+    // left
+    if (j > 0 && grid[i][j - 1].w > 0) {
       this.neighbors.push(grid[i][j - 1]);
+    }
+    // right
+    if (j < cols - 1 && grid[i][j + 1].w > 0) {
+      this.neighbors.push(grid[i][j + 1]);
     }
   };
 }
 
 //initializing the grid
 function init() {
-  //making a 2D array
-  for (let i = 0; i < cols; i++) {
-    grid[i] = new Array(rows);
-  }
+  // NOTE: map[0][0] is the top left corner
+  const map = [
+    [0, 0, 0, 1, 1],
+    [0, 0, 1, 1, 1],
+    [0, 0, 1, 0, 0],
+    [1, 1, 1, 1, 0]
+  ];
 
-  for (let i = 0; i < cols; i++) {
-    for (let j = 0; j < rows; j++) {
-      grid[i][j] = new GridPoint(i, j);
+  rows = map.length;
+  cols = map[0].length
+
+  for (let i = 0; i < rows; i++) {
+    grid.push([]);
+    for (let j = 0; j < cols; j++) {
+      grid[i].push(new GridPoint(i, j, map[i][j]));
     }
   }
 
-  for (let i = 0; i < cols; i++) {
-    for (let j = 0; j < rows; j++) {
+  //making a 2D array
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
       grid[i][j].updateNeighbors(grid);
     }
   }
 
-  start = grid[0][0];
-  end = grid[cols - 1][rows - 1];
+  start = grid[rows - 1][0];  // bottom left corner
+  end = grid[0][cols - 1];    // top right corner
 
   openSet.push(start);
 
@@ -136,4 +153,7 @@ function search() {
   return [];
 }
 
-console.log(search());
+const res = search();
+for (const step of res) {
+  console.log("(", step.x, ", ", step.y, ")");
+}
