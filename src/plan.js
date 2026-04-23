@@ -96,6 +96,11 @@ export class GoToPlan extends PlanBase {
 
       await new Promise(res => setTimeout(res, 100));
 
+      if (this.isStopped) {
+        this.isRunning = false;
+        return;
+      }
+
       let movedHorizontally;
       let movedVertically;
 
