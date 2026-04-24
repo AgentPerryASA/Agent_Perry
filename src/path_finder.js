@@ -20,10 +20,6 @@ export class PathFinder {
 class Astar {
   /** @type { MapPoint[][] } */
   #map;
-  /** @type { MapPoint[] } */
-  #openSet;
-  /** @type { MapPoint[] } */
-  #closedSet;
 
   /**
    * @param {number[][]} map
@@ -40,8 +36,11 @@ class Astar {
       }
     }
 
-    this.#openSet = [];
-    this.#closedSet = [];
+    for (let i = 0; i < rows; i++) {
+      for (let j = 0; j < cols; j++) {
+        this.#map[i][j].updateNeighbors(this.#map);
+      }
+    }
   }
 
   /**
@@ -62,30 +61,30 @@ class Astar {
    * @returns The shortest path from startPoint to endPoint in Manhattan distance
    */
   search(startPoint, endPoint) {
+    // Clean points info (parent and functions) before a new run
     const rows = this.#map.length;
     const cols = this.#map[0].length
-
     for (let i = 0; i < rows; i++) {
       for (let j = 0; j < cols; j++) {
-        this.#map[i][j].updateNeighbors(this.#map);
+        this.#map[i][j].clean();
       }
     }
 
     const start = this.#map[startPoint.x][startPoint.y];
     const end = this.#map[endPoint.x][endPoint.y];
+    const openSet = [start];
+    const closedSet = [];
     const path = [];
 
-    this.#openSet.push(start);
-
-    while (this.#openSet.length > 0) {
+    while (openSet.length > 0) {
       // Assume that the lowest index is the first one to begin with
       let lowestIndex = 0;
-      for (let i = 0; i < this.#openSet.length; i++) {
-        if (this.#openSet[i].f < this.#openSet[lowestIndex].f) {
+      for (let i = 0; i < openSet.length; i++) {
+        if (openSet[i].f < openSet[lowestIndex].f) {
           lowestIndex = i;
         }
       }
-      let current = this.#openSet[lowestIndex];
+      let current = openSet[lowestIndex];
 
       if (current == end) {
         let temp = current;
@@ -94,25 +93,26 @@ class Astar {
           path.push(temp.parent);
           temp = temp.parent;
         }
+
         // Return the traced path
         return path.reverse();
       }
 
       // Remove current point from openSet
-      this.#openSet.splice(lowestIndex, 1);
+      openSet.splice(lowestIndex, 1);
       // Add current to closedSet
-      this.#closedSet.push(current);
+      closedSet.push(current);
 
       let neighbors = current.neighbors;
 
       for (let i = 0; i < neighbors.length; i++) {
         let neighbor = neighbors[i];
 
-        if (!this.#closedSet.includes(neighbor)) {
+        if (!closedSet.includes(neighbor)) {
           let possibleG = current.g + 1;
 
-          if (!this.#openSet.includes(neighbor)) {
-            this.#openSet.push(neighbor);
+          if (!openSet.includes(neighbor)) {
+            openSet.push(neighbor);
           } else if (possibleG >= neighbor.g) {
             continue;
           }
@@ -137,7 +137,7 @@ class MapPoint {
   /** @type { MapPoint[] } */
   #neighbors; // neighbors of the current map point
   /** @type { MapPoint | undefined } */
-  parent;    // immediate source of the current map point
+  parent;     // immediate source of the current map point
 
   /**
    * 
@@ -194,5 +194,12 @@ class MapPoint {
     if (j < map[0].length - 1 && map[i][j + 1].w > 0) {
       this.#neighbors.push(map[i][j + 1]);
     }
+  }
+
+  clean() {
+    this.f = 0;
+    this.g = 0;
+    this.h = 0;
+    this.parent = undefined;
   }
 }

@@ -13,7 +13,6 @@ export class Agent {
   /** @type { Map<string, IOParcel> } */
   #parcelMap = new Map();
   tileMap = {
-    // /** @type { {c:Coordinates, w:number}[][] } */
     /** @type { number[][] } */
     tiles: [],
     /** @type { Coordinates[] } */
@@ -98,6 +97,8 @@ export class Agent {
       });
     }));
 
+    // Wait onMap and onYou to receive the first event before starting the logic
+    // The tile map and the "me" info are required for the following classes and methods
     Promise.all(promiseList).then(async () => {
       this.#planLibrary.push(new GoToPlan(this));
       this.#planLibrary.push(new GoPickUpPlan(this));
@@ -106,25 +107,21 @@ export class Agent {
       // In case of no changes in the environment, so no sensing events received
       this.#generateBestIntention();
 
-      this.#startOnSensing();
-    });
-  }
-
-  #startOnSensing() {
-    // Keep track of parcels around us
-    this.#socket.onSensing(async sensing => {
-      for (const parcel of sensing.parcels) {
-        this.#parcelMap.set(parcel.id, parcel);
-      }
-
-      for (const parcel of this.#parcelMap.values()) {
-        if (sensing.parcels.map(p => p.id).find(id => id == parcel.id) == undefined) {
-          this.#parcelMap.delete(parcel.id);
+      // Keep track of parcels around us
+      this.#socket.onSensing(async sensing => {
+        for (const parcel of sensing.parcels) {
+          this.#parcelMap.set(parcel.id, parcel);
         }
-      }
 
-      // Constantly generate the best intention based on our sensing
-      await this.#generateBestIntention();
+        for (const parcel of this.#parcelMap.values()) {
+          if (sensing.parcels.map(p => p.id).find(id => id == parcel.id) == undefined) {
+            this.#parcelMap.delete(parcel.id);
+          }
+        }
+
+        // Constantly generate the best intention based on our sensing
+        await this.#generateBestIntention();
+      });
     });
   }
 

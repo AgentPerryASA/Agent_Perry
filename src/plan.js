@@ -99,7 +99,7 @@ export class GoToPlan extends PlanBase {
     const end = intention.destinationCoordinates;
     const a = this.agent.me;
 
-    console.log(a.coordinates, " -> ", end);
+    // TODO: wait?
     const path = this.#pathFinder.search(a.coordinates, end);
 
     if (path) {
