@@ -7,20 +7,12 @@ import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention } from "./intention.js";
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan } from './plan.js';
-import { Beliefs } from "./belief.js"
+import { Beliefs, WorldMap } from "./belief.js"
 
 export class Agent {
   // TODO: put them in beliefs
-  /** @type { Map<string, IOParcel> } */
-  #parcelMap = new Map();
-  tileMap = {
-    /** @type { number[][] } */
-    tiles: [],
-    /** @type { Coordinates[] } */
-    green: [],
-    /** @type { Coordinates[] } */
-    red: []
-  }
+  /* @type { Map<string, IOParcel> } */
+  //#parcelMap = new Map(); //Not used?
 
 
   #socket;
@@ -57,30 +49,17 @@ export class Agent {
     return this.#me;
   }
 
+  get internalBelief() {
+    return this.#internalBelief
+  }
+
   init() {
     const promiseList = [];
 
     // Keep track of green and red tiles coordinates
     promiseList.push(new Promise(resolve => {
       this.#socket.onMap((w, h, tiles) => {
-        let currentRow = -1;
-        for (let i = 0; i < tiles.length; i++) {
-          const coordinates = new Coordinates(tiles[i].x, tiles[i].y)
-
-          // Store the map as a matrix
-          if (tiles[i].x != currentRow) {
-            currentRow++;
-            this.tileMap.tiles.push([]);
-          }
-          this.tileMap.tiles[currentRow].push(Number(tiles[i].type));
-
-          if (tiles[i].type == '1') {
-            this.tileMap.green.push(coordinates);
-          } else if (tiles[i].type == '2') {
-            this.tileMap.red.push(coordinates);
-          }
-        }
-
+        this.#internalBelief.updateTileMap(tiles);
         resolve(true);
       });
     }));
@@ -116,16 +95,6 @@ export class Agent {
       this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels)
 
-        for (const parcel of sensing.parcels) {
-          this.#parcelMap.set(parcel.id, parcel);
-        }
-
-        for (const parcel of this.#parcelMap.values()) {
-          if (sensing.parcels.map(p => p.id).find(id => id == parcel.id) == undefined) {
-            this.#parcelMap.delete(parcel.id);
-          }
-        }
-
         // Constantly generate the best intention based on our sensing
         await this.#generateBestIntention();
       });
@@ -138,21 +107,22 @@ export class Agent {
     // Store the intention of delivering the parcels we are carrying
     // TODO: carriedParcelsCount does not listen to carried parcels that are expired
     if (this.carriedParcelsCount >= 1) {
-      for (const redTile of this.tileMap.red) {
+      for (const redTile of this.#internalBelief.tileMap.red) {
         this.#intentionList.goPutDown.push(new GoPutDownIntention(redTile));
       }
     }
 
     // Store the intentions of picking up all the free parcels around us
-    for (const parcel of this.#parcelMap.values()) {
-      if (!parcel.carriedBy) {
-        const intention = new GoPickUpIntention(parcel);
+    for(const parcel of this.#internalBelief.parcelList) {
+      if(!parcel.parcel.carriedBy) {
+        const intention = new GoPickUpIntention(parcel.parcel);
         this.#intentionList.goPickUp.push(intention);
       }
     }
+    
     // Store the intentions of going to green tiles, if the are no free parcels around us
-    if (this.#parcelMap.size == 0) {
-      for (const greenTile of this.tileMap.green) {
+    if(this.#internalBelief.parcelList.length == 0) {
+      for (const greenTile of this.#internalBelief.tileMap.green) {
         this.#intentionList.goTo.push(new GoToIntention(greenTile));
       }
     }

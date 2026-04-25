@@ -2,7 +2,11 @@
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
 import { Agent } from "./agent.js";
-import { GoPickUpIntention, GoToIntention, GoPutDownIntention } from "./intention.js";
+import {
+  GoPickUpIntention,
+  GoToIntention,
+  GoPutDownIntention,
+} from "./intention.js";
 import { PathFinder } from "./path_finder.js";
 
 class PlanBase {
@@ -28,7 +32,7 @@ class PlanBase {
   }
 
   /**
-   * @param { boolean } value 
+   * @param { boolean } value
    */
   set isRunning(value) {
     this.#isRunning = value;
@@ -39,7 +43,7 @@ class PlanBase {
   }
 
   /**
-   * @param {Intention} intention 
+   * @param {Intention} intention
    */
   async achieveSubIntention(intention) {
     this.#subPlan = this.agent.selectPlan(intention);
@@ -59,7 +63,7 @@ class PlanBase {
     if (this.#isRunning) {
       this.isStopped = true;
 
-      await new Promise(resolve => {
+      await new Promise((resolve) => {
         this.#stopResolver = resolve;
       });
 
@@ -79,18 +83,18 @@ export class GoToPlan extends PlanBase {
   constructor(agent) {
     super(agent);
 
-    this.#pathFinder = new PathFinder(this.agent.tileMap.tiles);
+    this.#pathFinder = new PathFinder(this.agent.internalBelief.tileMap.tiles);
   }
 
   /**
-   * @param {Intention} intention 
+   * @param {Intention} intention
    */
   isApplicable(intention) {
     return GoToIntention.isTypeOf(intention);
   }
 
   /**
-   * @param {GoToIntention} intention 
+   * @param {GoToIntention} intention
    */
   async execute(intention) {
     this.isRunning = true;
@@ -109,7 +113,7 @@ export class GoToPlan extends PlanBase {
           return;
         }
 
-        await new Promise(res => setTimeout(res, 100));
+        await new Promise((res) => setTimeout(res, 100));
 
         if (this.isStopped) {
           this.isRunning = false;
@@ -120,9 +124,9 @@ export class GoToPlan extends PlanBase {
         let movedVertically;
 
         if (a.coordinates.x < step.x) {
-          movedHorizontally = await this.agent.socket.emitMove('right');
+          movedHorizontally = await this.agent.socket.emitMove("right");
         } else if (a.coordinates.x > step.x) {
-          movedHorizontally = await this.agent.socket.emitMove('left');
+          movedHorizontally = await this.agent.socket.emitMove("left");
         }
 
         if (movedHorizontally) {
@@ -130,9 +134,9 @@ export class GoToPlan extends PlanBase {
         }
 
         if (a.coordinates.y < step.y) {
-          movedVertically = await this.agent.socket.emitMove('up');
+          movedVertically = await this.agent.socket.emitMove("up");
         } else if (a.coordinates.y > step.y) {
-          movedVertically = await this.agent.socket.emitMove('down');
+          movedVertically = await this.agent.socket.emitMove("down");
         }
 
         if (movedVertically) {
@@ -147,14 +151,14 @@ export class GoToPlan extends PlanBase {
 
 export class GoPickUpPlan extends PlanBase {
   /**
-   * @param {Intention} intention 
+   * @param {Intention} intention
    */
   isApplicable(intention) {
     return GoPickUpIntention.isTypeOf(intention);
   }
 
   /**
-   * @param {GoPickUpIntention} intention 
+   * @param {GoPickUpIntention} intention
    */
   async execute(intention) {
     this.isRunning = true;
@@ -179,14 +183,14 @@ export class GoPickUpPlan extends PlanBase {
 
 export class GoPutDownPlan extends PlanBase {
   /**
-   * @param {Intention} intention 
+   * @param {Intention} intention
    */
   isApplicable(intention) {
     return GoPutDownIntention.isTypeOf(intention);
   }
 
   /**
-   * @param {GoPutDownIntention} intention 
+   * @param {GoPutDownIntention} intention
    */
   async execute(intention) {
     this.isRunning = true;
