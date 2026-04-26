@@ -2,7 +2,7 @@ export class PathFinder {
   #algorithm;
 
   /**
-   * @param {number[][]} map
+   * @param {string[][]} map A column-wise matrix, so map[x][y] returns cell (x, y)
    */
   constructor(map) {
     this.#algorithm = new Astar(map);
@@ -22,22 +22,22 @@ class Astar {
   #map;
 
   /**
-   * @param {number[][]} map
+   * @param {string[][]} map A column-wise matrix, so map[x][y] returns cell (x, y)
    */
   constructor(map) {
-    const rows = map.length;
-    const cols = map[0].length
+    const cols = map.length
+    const rows = map[0].length;
 
     this.#map = [];
-    for (let i = 0; i < rows; i++) {
+    for (let i = 0; i < cols; i++) {
       this.#map.push([]);
-      for (let j = 0; j < cols; j++) {
+      for (let j = 0; j < rows; j++) {
         this.#map[i].push(new MapPoint({ x: i, y: j, w: map[i][j] }));
       }
     }
 
-    for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++) {
+    for (let i = 0; i < cols; i++) {
+      for (let j = 0; j < rows; j++) {
         this.#map[i][j].updateNeighbors(this.#map);
       }
     }
@@ -62,10 +62,10 @@ class Astar {
    */
   search(startPoint, endPoint) {
     // Clean points info (parent and functions) before a new run
-    const rows = this.#map.length;
-    const cols = this.#map[0].length
-    for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++) {
+    const cols = this.#map.length
+    const rows = this.#map[0].length;
+    for (let i = 0; i < cols; i++) {
+      for (let j = 0; j < rows; j++) {
         this.#map[i][j].clean();
       }
     }
@@ -130,7 +130,7 @@ class Astar {
 class MapPoint {
   #x;         // x location of the map point
   #y;         // y location of the map point
-  #w;         // weight (0=no-walkable, walkable otherwise)
+  #w;         // weight ('0'=no-walkable, arrow=neighbors restriction, walkable otherwise)
   f;          // total cost function
   g;          // cost function from start to the current map point
   h;          // heuristic estimated cost function from current map point to the goal
@@ -141,7 +141,7 @@ class MapPoint {
 
   /**
    * 
-   * @param {{x:number, y:number, w:number}} point
+   * @param {{x:number, y:number, w:string}} point
    */
   constructor(point) {
     this.#x = point.x;
@@ -173,26 +173,49 @@ class MapPoint {
    * @param {MapPoint[][]} map 
    */
   updateNeighbors(map) {
-    if (this.#w == 0) return;
+    if (this.#w == '0') return;
 
     let i = this.#x;
     let j = this.#y;
 
-    // top
-    if (i > 0 && map[i - 1][j].w > 0) {
-      this.#neighbors.push(map[i - 1][j]);
+    // above
+    if (
+      j < map[0].length - 1 &&    // A tile above exists
+      map[i][j + 1].w != '0' &&   // The tile above is walkable
+      map[i][j + 1].w != '↓' &&   // The tile above allows to move up
+      this.#w != '↓'              // This tile allows to move up
+    ) {
+      this.#neighbors.push(map[i][j + 1]);
     }
-    // bottom
-    if (i < map.length - 1 && map[i + 1][j].w > 0) {
-      this.#neighbors.push(map[i + 1][j]);
-    }
-    // left
-    if (j > 0 && map[i][j - 1].w > 0) {
+
+    // below
+    if (
+      j > 0 &&                    // A tile below exists
+      map[i][j - 1].w != '0' &&   // The tile below si walkable
+      map[i][j - 1].w != '↑' &&   // The tile below allows to move down
+      this.#w != '↑'              // This tile allows to move down
+    ) {
       this.#neighbors.push(map[i][j - 1]);
     }
+
     // right
-    if (j < map[0].length - 1 && map[i][j + 1].w > 0) {
-      this.#neighbors.push(map[i][j + 1]);
+    if (
+      i < map.length - 1 &&       // A tile on the right exists
+      map[i + 1][j].w != '0' &&   // The tile on the right is walkable
+      map[i + 1][j].w != '←' &&   // The tile on the right allows to move right
+      this.#w != '←'              // This tile allows to move right
+    ) {
+      this.#neighbors.push(map[i + 1][j]);
+    }
+
+    // left
+    if (
+      i > 0 &&                    // A tile on the left exists
+      map[i - 1][j].w != '0' &&   // The tile on the left is walkable
+      map[i - 1][j].w != '→' &&   // The tile on the left allows to move left
+      this.#w != '→'              // This tile allows to move left
+    ) {
+      this.#neighbors.push(map[i - 1][j]);
     }
   }
 

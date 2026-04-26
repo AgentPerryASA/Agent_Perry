@@ -3,7 +3,7 @@
 import { Coordinates } from "./coordinates.js";
 
 export class WorldMap {
-  /** @type { number[][] } */
+  /** @type { string[][] } */
   tiles;
   /** @type { Coordinates[] } */
   green;
@@ -11,13 +11,13 @@ export class WorldMap {
   red;
 
   /**
-   *
-   * @param {number[][]} tiles
+   * @param {string[][]} tiles
    * @param {Coordinates[]} green
    * @param {Coordinates[]} red
    */
   constructor(tiles, green, red) {
-    ((this.tiles = tiles), (this.green = green));
+    this.tiles = tiles;
+    this.green = green;
     this.red = red;
   }
 }
@@ -33,7 +33,6 @@ export class Parcel {
   parcel;
 
   /**
-   *
    * @param {IOParcel} parcel
    * @param {number} lastUpdateTimestamp
    */
@@ -57,7 +56,6 @@ export class Beliefs {
   }
 
   /**
-   *
    * @param {Parcel} parcel
    * @returns {boolean}
    */
@@ -74,7 +72,7 @@ export class Beliefs {
    * @param {IOParcel[] | undefined} sensedParcelList
    */
   reviseParcelList(sensedParcelList) {
-    let endTime = Date.now() + 0.01 * this.#parcelList.length; //Assume the function takes about 3 seconds to run
+    let endTime = Date.now() + 0.01 * this.#parcelList.length;
 
     /**@type {Map<string,IOParcel>} */
     let sensedParcelMap = new Map();
@@ -91,23 +89,24 @@ export class Beliefs {
       );
 
       if (currentParcelFromSensedList != undefined) {
-        //If the current parcel was in the sensed list, then update value with that. A check to see if it is now carried is necessary.
+        // If the current parcel was in the sensed list, then update value with that. A check to see if it is now carried is necessary.
         if (currentParcelFromSensedList.carriedBy == undefined) {
           this.#parcelList[i].parcel = currentParcelFromSensedList;
           this.#parcelList[i].lastUpdateTimestamp = endTime;
         } else {
-          //If parcel is carried, remove it from the list
+          // If parcel is carried, remove it from the list
           this.#parcelList.splice(i);
           i -= 1;
         }
 
-        //Remove the just analyzed parcel from the map so later it is possible to see what are the new parcels
+        // Remove the just analyzed parcel from the map so later it is possible to see what are the new parcels
         sensedParcelMap.delete(currentParcelFromBelief.parcel.id);
       } else {
-        this.#parcelList[i].cumulatedTime +=
-          (endTime - this.#parcelList[i].lastUpdateTimestamp) / 1000;
+        this.#parcelList[i].cumulatedTime += (endTime - this.#parcelList[i].lastUpdateTimestamp) / 1000;
         if (this.#isParcelToBeRemoved(currentParcelFromBelief)) {
-          //If parcel is not present in the current sensed list, it can no longer be sensed: check if it is necessary to delete it (everytime it is added the delta between the last check and the latest, when this is bigger than 1 means one second passed, and we need to decrease the reward)
+          // If parcel is not present in the current sensed list, it can no longer be sensed: check if it is necessary to delete it
+          // (everytime it is added the delta between the last check and the latest, when this is bigger than 1 means one second passed,
+          // and we need to decrease the reward)
           this.#parcelList.splice(i);
           i -= 1;
         } else {
@@ -134,29 +133,30 @@ export class Beliefs {
   }
 
   /**
-   *
    * @param {IOTile[]} tiles
    */
   updateTileMap(tiles) {
-    let currentRow = -1;
-    for (let i = 0; i < tiles.length; i += 1) {
+    // NOTE: tiles is a 1D array where x indicates the column index, while y the row one
+    for (let i = 0; i < tiles.length; i++) {
       const coordinates = new Coordinates(tiles[i].x, tiles[i].y);
 
-      // Store the map as a matrix
-      if (tiles[i].x != currentRow) {
-        currentRow += 1;
+      const colIdx = tiles[i].x;
+      // Create the column in the map if it does not exist
+      if (this.tileMap.tiles.length == colIdx) {
         this.tileMap.tiles.push([]);
       }
 
-      this.tileMap.tiles[currentRow].push(Number(tiles[i].type));
-
       const tileType = tiles[i].type;
 
-      if (tileType == "1") {
-        //Green tiles (parcel spawn)
+      // Store the map as a column-wise matrix, so that it matches the standard coordinates
+      // Coordinates(x, y) corresponds to tileMap.tiles[x][y]
+      this.tileMap.tiles[colIdx].push(tileType);
+
+      if (tileType == '1') {
+        // Green tiles (parcel spawn)
         this.tileMap.green.push(coordinates);
-      } else if (tileType == "2") {
-        //Red tiles (delivery)
+      } else if (tileType == '2') {
+        // Red tiles (delivery)
         this.tileMap.red.push(coordinates);
       }
     }

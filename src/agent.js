@@ -7,14 +7,9 @@ import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention } from "./intention.js";
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan } from './plan.js';
-import { Beliefs, WorldMap } from "./belief.js"
+import { Beliefs } from "./belief.js"
 
 export class Agent {
-  // TODO: put them in beliefs
-  /* @type { Map<string, IOParcel> } */
-  //#parcelMap = new Map(); //Not used?
-
-
   #socket;
   #me;
   /** @type { Plan[] } */
@@ -60,6 +55,7 @@ export class Agent {
     promiseList.push(new Promise(resolve => {
       this.#socket.onMap((w, h, tiles) => {
         this.#internalBelief.updateTileMap(tiles);
+
         resolve(true);
       });
     }));
@@ -68,16 +64,16 @@ export class Agent {
     promiseList.push(new Promise(resolve => {
       this.#socket.onYou(async ({ id, name, x, y, score }) => {
         // Skip intermediate values (0.6 or 0.4)
-        if ((x && x % 1 == 0) && (y && y % 1 == 0)) {
+        if ((x != undefined && x % 1 == 0) && (y != undefined && y % 1 == 0)) {
           this.#me = new Me(
             id,
             name,
             new Coordinates(x, y),
             score
           );
-
           resolve(true);
         }
+
       });
     }));
 
@@ -113,15 +109,15 @@ export class Agent {
     }
 
     // Store the intentions of picking up all the free parcels around us
-    for(const parcel of this.#internalBelief.parcelList) {
-      if(!parcel.parcel.carriedBy) {
+    for (const parcel of this.#internalBelief.parcelList) {
+      if (!parcel.parcel.carriedBy) {
         const intention = new GoPickUpIntention(parcel.parcel);
         this.#intentionList.goPickUp.push(intention);
       }
     }
-    
+
     // Store the intentions of going to green tiles, if the are no free parcels around us
-    if(this.#internalBelief.parcelList.length == 0) {
+    if (this.#internalBelief.parcelList.length == 0) {
       for (const greenTile of this.#internalBelief.tileMap.green) {
         this.#intentionList.goTo.push(new GoToIntention(greenTile));
       }
