@@ -27,8 +27,7 @@ export class Agent {
     this.#me = new Me('', '', new Coordinates(0, 0), 0);
     this.#planLibrary = [];
     this.#intentionList = new IntentionList();
-    this.#internalBelief = new Beliefs()
-
+    this.#internalBelief = new Beliefs();
     this.#socket = DjsConnect();
 
     this.init();
@@ -43,7 +42,7 @@ export class Agent {
   }
 
   get internalBelief() {
-    return this.#internalBelief
+    return this.#internalBelief;
   }
 
   init() {
@@ -180,6 +179,11 @@ export class Agent {
               bestIntention = intention;
             }
           }
+        }
+        if(this.#internalBelief.nearAgentList.length==0) {
+          //List could be empty: the package is the best on that case
+          highestScore = parcelScore;
+          bestIntention = intention;
         }
       }
     }

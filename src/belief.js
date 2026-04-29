@@ -99,7 +99,7 @@ export class Beliefs {
    */
   #isParcelToBeRemoved(parcel) {
     const newReward = Math.ceil(parcel.parcel.reward - parcel.cumulatedTime);
-    if (newReward <= 0) {
+    if (newReward < this.#parcelMinScore) {
       return true;
     } else {
       return false;
@@ -121,18 +121,21 @@ export class Beliefs {
     }
 
     for (let i = 0; i < this.#parcelList.length; i += 1) {
-      let currentParcelFromBelief = this.#parcelList[i];
+      let currentParcelFromBelief = this.#parcelList[i]; //parcel from belief
       let currentParcelFromSensedList = sensedParcelMap.get(
         currentParcelFromBelief.parcel.id,
-      );
+      ); //parcel from sensed list
 
       if (currentParcelFromSensedList != undefined) {
-        // If the current parcel was in the sensed list, then update value with that. A check to see if it is now carried is necessary.
-        if (currentParcelFromSensedList.carriedBy == undefined) {
+        // If the current parcel was in the sensed list, then update value with that. A check to see if it is now carried is necessary, as well as a check to see whether the parcel is still good to be picked up (>= min value).
+        if (
+          currentParcelFromSensedList.carriedBy == undefined &&
+          currentParcelFromSensedList.reward >= this.#parcelMinScore
+        ) {
           this.#parcelList[i].parcel = currentParcelFromSensedList;
           this.#parcelList[i].lastUpdateTimestamp = endTime;
         } else {
-          // If parcel is carried, remove it from the list
+          // If parcel is carried or no longer has an high value, remove it from the list
           this.#parcelList.splice(i);
           i -= 1;
         }
@@ -163,7 +166,10 @@ export class Beliefs {
     }
 
     for (const [_, parcel] of sensedParcelMap) {
-      if (parcel.carriedBy == undefined) {
+      if (
+        parcel.carriedBy == undefined &&
+        parcel.reward >= this.parcelMinScore
+      ) {
         let newParcel = new Parcel(parcel, Date.now());
 
         this.#parcelList.push(newParcel);
