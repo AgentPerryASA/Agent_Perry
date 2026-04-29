@@ -1,5 +1,6 @@
 /** @typedef IOParcel @type {import("@unitn-asa/deliveroo-js-sdk").IOParcel}} */
 /**@typedef IOTile @type {import("@unitn-asa/deliveroo-js-sdk").IOTile} */
+/**@typedef IOConfig @type {import("@unitn-asa/deliveroo-js-sdk").IOConfig} */
 import { Coordinates } from "./coordinates.js";
 
 export class WorldMap {
@@ -48,11 +49,39 @@ export class Beliefs {
   #parcelList;
 
   /**@type {WorldMap} */
-  tileMap;
+  #tileMap;
+
+  /**@type {number} */
+  #carriedParcelsCount;
+
+  /**@type {number} */
+  #parcelMinScore;
 
   constructor() {
     this.#parcelList = [];
-    this.tileMap = new WorldMap([], [], []);
+    this.#tileMap = new WorldMap([], [], []);
+    this.#carriedParcelsCount = 0;
+    this.#parcelMinScore = 0;
+  }
+
+  get tileMap() {
+    return this.#tileMap;
+  }
+
+  get carriedParcelsCount() {
+    return this.#carriedParcelsCount;
+  }
+
+  get parcelList() {
+    return this.#parcelList;
+  }
+
+  get parcelMinScore() {
+    return this.#parcelMinScore;
+  }
+
+  set carriedParcelsCount(n) {
+    this.#carriedParcelsCount = n;
   }
 
   /**
@@ -102,7 +131,8 @@ export class Beliefs {
         // Remove the just analyzed parcel from the map so later it is possible to see what are the new parcels
         sensedParcelMap.delete(currentParcelFromBelief.parcel.id);
       } else {
-        this.#parcelList[i].cumulatedTime += (endTime - this.#parcelList[i].lastUpdateTimestamp) / 1000;
+        this.#parcelList[i].cumulatedTime +=
+          (endTime - this.#parcelList[i].lastUpdateTimestamp) / 1000;
         if (this.#isParcelToBeRemoved(currentParcelFromBelief)) {
           // If parcel is not present in the current sensed list, it can no longer be sensed: check if it is necessary to delete it
           // (everytime it is added the delta between the last check and the latest, when this is bigger than 1 means one second passed,
@@ -152,17 +182,20 @@ export class Beliefs {
       // Coordinates(x, y) corresponds to tileMap.tiles[x][y]
       this.tileMap.tiles[colIdx].push(tileType);
 
-      if (tileType == '1') {
+      if (tileType == "1") {
         // Green tiles (parcel spawn)
         this.tileMap.green.push(coordinates);
-      } else if (tileType == '2') {
+      } else if (tileType == "2") {
         // Red tiles (delivery)
         this.tileMap.red.push(coordinates);
       }
     }
   }
 
-  get parcelList() {
-    return this.#parcelList;
+  /**@param {IOConfig} config*/
+  updateGameConfiguration(config) {
+    const avgScore = config.GAME.parcels.reward_avg;
+    this.#parcelMinScore = avgScore * 0.5;
+    console.log("avg ", this.#parcelMinScore);
   }
 }

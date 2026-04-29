@@ -19,10 +19,6 @@ export class Agent {
   #currentIntention;
   /** @type {Plan | undefined} */
   #currentPlan;
-  // TODO: put it into belief, used in GoPutDownPlan
-  carriedParcelsCount;
-  // TODO: put it into belief
-  #parcelMinScore;
 
   /** @type {Beliefs} */
   #internalBelief;
@@ -32,8 +28,6 @@ export class Agent {
     this.#planLibrary = [];
     this.#intentionList = new IntentionList();
     this.#internalBelief = new Beliefs()
-    this.carriedParcelsCount = 0;
-    this.#parcelMinScore = 0;
 
     this.#socket = DjsConnect();
 
@@ -58,8 +52,7 @@ export class Agent {
     // Store relevant map configuration
     promiseList.push(new Promise(resolve => {
       this.#socket.onConfig(config => {
-        const avgScore = config.GAME.parcels.reward_avg;
-        this.#parcelMinScore = avgScore * 0.5;
+        this.#internalBelief.updateGameConfiguration(config)
 
         resolve(true);
       });
@@ -116,7 +109,7 @@ export class Agent {
 
     // Store the intention of delivering the parcels we are carrying
     // TODO: carriedParcelsCount does not listen to carried parcels that are expired
-    if (this.carriedParcelsCount >= 1) {
+    if (this.#internalBelief.carriedParcelsCount >= 1) {
       for (const redTile of this.#internalBelief.tileMap.red) {
         this.#intentionList.goPutDown.push(new GoPutDownIntention(redTile));
       }
@@ -168,7 +161,7 @@ export class Agent {
     let highestScore = 0;
     for (const intention of this.#intentionList.goPickUp) {
       const parcelScore = intention.parcel.reward;
-      if (parcelScore > highestScore && parcelScore >= this.#parcelMinScore) {
+      if (parcelScore > highestScore && parcelScore >= this.#internalBelief.parcelMinScore) {
         // TODO: check if an agent is closer
 
         highestScore = parcelScore;
@@ -243,6 +236,18 @@ export class Agent {
         return plan;
       }
     }
+  }
+
+  /**@param {number} n*/
+  set carriedParcelsCount(n) {
+    /*
+    * Necessary, otherwise the whole internalbelief attr should be made public or with a setter, which would be dangerous
+    */
+    this.#internalBelief.carriedParcelsCount = n;
+  }
+
+  get carriedParcelsCount() {
+    return this.#internalBelief.carriedParcelsCount
   }
 }
 
