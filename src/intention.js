@@ -21,7 +21,7 @@ export class GoToIntention {
    * @param {Intention} intention
    */
   isEqual(intention) {
-    // NOTE: parcel attribute in intention if first condition true, so safe check
+    // NOTE: destinationCoordinates attribute in intention if first condition true, so safe check
     // @ts-ignore
     return intention instanceof this.constructor && this.#destinationCoordinates.isEqual(intention.destinationCoordinates);
   }

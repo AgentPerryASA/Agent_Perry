@@ -19,7 +19,10 @@ export class Agent {
   #currentIntention;
   /** @type {Plan | undefined} */
   #currentPlan;
+  // TODO: put it into belief, used in GoPutDownPlan
   carriedParcelsCount;
+  // TODO: put it into belief
+  #parcelMinScore;
 
   /** @type {Beliefs} */
   #internalBelief;
@@ -30,6 +33,7 @@ export class Agent {
     this.#intentionList = new IntentionList();
     this.#internalBelief = new Beliefs()
     this.carriedParcelsCount = 0;
+    this.#parcelMinScore = 0;
 
     this.#socket = DjsConnect();
 
@@ -51,7 +55,17 @@ export class Agent {
   init() {
     const promiseList = [];
 
-    // Keep track of green and red tiles coordinates
+    // Store relevant map configuration
+    promiseList.push(new Promise(resolve => {
+      this.#socket.onConfig(config => {
+        const avgScore = config.GAME.parcels.reward_avg;
+        this.#parcelMinScore = avgScore * 0.5;
+
+        resolve(true);
+      });
+    }));
+
+    // Store map structure and position of green and red tiles
     promiseList.push(new Promise(resolve => {
       this.#socket.onMap((w, h, tiles) => {
         this.#internalBelief.updateTileMap(tiles);
@@ -71,9 +85,9 @@ export class Agent {
             new Coordinates(x, y),
             score
           );
+
           resolve(true);
         }
-
       });
     }));
 
@@ -133,9 +147,9 @@ export class Agent {
 
   #selectBestIntention() {
     let bestIntention;
-    let minDistance = Number.MAX_VALUE;
 
     // Best intention candidate: delivery parcels to the nearest red tile
+    let minDistance = Number.MAX_VALUE;
     for (const intention of this.#intentionList.goPutDown) {
       const distance = this.#distance(intention.deliveryCoordinates, this.#me.coordinates);
       if (distance < minDistance) {
@@ -145,16 +159,19 @@ export class Agent {
     }
 
     // NOTE: priority to delivery intention
+    // TODO: go to pick up if a free parcel is along the path
     if (bestIntention) {
       return bestIntention;
     }
 
-    // Best intention candidate: pick up the nearest free parcel
-    minDistance = Number.MAX_VALUE;
+    // Best intention candidate: pick up the free parcel with the highest score
+    let highestScore = 0;
     for (const intention of this.#intentionList.goPickUp) {
-      const distance = this.#distance(intention.parcelCoordinates, this.#me.coordinates);
-      if (distance < minDistance) {
-        minDistance = distance;
+      const parcelScore = intention.parcel.reward;
+      if (parcelScore > highestScore && parcelScore >= this.#parcelMinScore) {
+        // TODO: check if an agent is closer
+
+        highestScore = parcelScore;
         bestIntention = intention;
       }
     }
@@ -184,15 +201,17 @@ export class Agent {
     }
 
     this.#currentIntention = intention;
+    console.log(this.#currentIntention)
 
     await this.#achieveCurrentIntention();
   }
 
   async #achieveCurrentIntention() {
-    // TODO: check validity
-
     if (this.#currentIntention) {
       await this.#stopCurrentIntention();
+
+      // TODO: check if a new intention is selected
+      // TOOD: the check if the parcel is still free is not needed, a new intention will be generated next iteration
 
       this.#currentPlan = this.selectPlan(this.#currentIntention);
       if (this.#currentPlan) {

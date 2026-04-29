@@ -127,7 +127,7 @@ class Astar {
   }
 }
 
-class MapPoint {
+export class MapPoint {
   #x;         // x location of the map point
   #y;         // y location of the map point
   #w;         // weight ('0'=no-walkable, arrow=neighbors restriction, walkable otherwise)
