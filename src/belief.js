@@ -1,6 +1,7 @@
 /** @typedef IOParcel @type {import("@unitn-asa/deliveroo-js-sdk").IOParcel}} */
 /**@typedef IOTile @type {import("@unitn-asa/deliveroo-js-sdk").IOTile} */
 /**@typedef IOConfig @type {import("@unitn-asa/deliveroo-js-sdk").IOConfig} */
+/**@typedef IOAgent @type {import("@unitn-asa/deliveroo-js-sdk").IOAgent} */
 import { Coordinates } from "./coordinates.js";
 
 export class WorldMap {
@@ -57,11 +58,15 @@ export class Beliefs {
   /**@type {number} */
   #parcelMinScore;
 
+  /**@type {IOAgent[]} */
+  #nearAgentList;
+
   constructor() {
     this.#parcelList = [];
     this.#tileMap = new WorldMap([], [], []);
     this.#carriedParcelsCount = 0;
     this.#parcelMinScore = 0;
+    this.#nearAgentList = [];
   }
 
   get tileMap() {
@@ -78,6 +83,10 @@ export class Beliefs {
 
   get parcelMinScore() {
     return this.#parcelMinScore;
+  }
+
+  get nearAgentList() {
+    return this.#nearAgentList;
   }
 
   set carriedParcelsCount(n) {
@@ -196,6 +205,16 @@ export class Beliefs {
   updateGameConfiguration(config) {
     const avgScore = config.GAME.parcels.reward_avg;
     this.#parcelMinScore = avgScore * 0.5;
-    console.log("avg ", this.#parcelMinScore);
+  }
+
+  /**@param {IOAgent[]} agents*/
+  updateNearAgentList(agents) {
+    //Clear the array
+    this.#nearAgentList.splice(0, this.#nearAgentList.length);
+
+    //Copy needed, otherwise it's not a copy but a reference
+    for (let i = 0; i < agents.length; i += 1) {
+      this.#nearAgentList.push(agents[i]);
+    }
   }
 }

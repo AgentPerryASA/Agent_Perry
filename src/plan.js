@@ -257,7 +257,7 @@ export class GoPickUpPlan extends PlanBase {
 
     const result = await this.agent.socket.emitPickup();
     if (result.length > 0) {
-      this.agent.carriedParcelsCount += 1;
+      this.agent.internalBelief.carriedParcelsCount += 1;
     }
 
     this.isRunning = false;
@@ -289,7 +289,7 @@ export class GoPutDownPlan extends PlanBase {
 
     const result = await this.agent.socket.emitPutdown();
     if (result.length > 0) {
-      this.agent.carriedParcelsCount = 0;
+      this.agent.internalBelief.carriedParcelsCount = 0;
     }
 
     this.isRunning = false;

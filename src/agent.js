@@ -97,6 +97,7 @@ export class Agent {
       // Keep track of parcels around us
       this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels)
+        this.#internalBelief.updateNearAgentList(sensing.agents)
 
         // Constantly generate the best intention based on our sensing
         await this.#generateBestIntention();
@@ -162,10 +163,24 @@ export class Agent {
     for (const intention of this.#intentionList.goPickUp) {
       const parcelScore = intention.parcel.reward;
       if (parcelScore > highestScore && parcelScore >= this.#internalBelief.parcelMinScore) {
-        // TODO: check if an agent is closer
 
-        highestScore = parcelScore;
-        bestIntention = intention;
+        for(let i=0;i<this.#internalBelief.nearAgentList.length;i+=1) {
+          let currentCheckedAgent = this.#internalBelief.nearAgentList[i]
+          const x = currentCheckedAgent.x;
+          const y = currentCheckedAgent.y;
+
+          if (x !== undefined && y !== undefined) {
+            let agentDst = this.#distance({ x, y }, intention.parcel);
+            let myDst = this.#distance(this.#me.coordinates,intention.parcel)
+            let dst = myDst-agentDst
+
+            if(dst < 0) {
+              //If the difference on distances is positive, this means another agent is nearer to the packet
+              highestScore = parcelScore;
+              bestIntention = intention;
+            }
+          }
+        }
       }
     }
 
@@ -236,18 +251,6 @@ export class Agent {
         return plan;
       }
     }
-  }
-
-  /**@param {number} n*/
-  set carriedParcelsCount(n) {
-    /*
-    * Necessary, otherwise the whole internalbelief attr should be made public or with a setter, which would be dangerous
-    */
-    this.#internalBelief.carriedParcelsCount = n;
-  }
-
-  get carriedParcelsCount() {
-    return this.#internalBelief.carriedParcelsCount
   }
 }
 
