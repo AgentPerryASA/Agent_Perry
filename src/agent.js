@@ -91,8 +91,8 @@ export class Agent {
       });
     }));
 
-    // Wait onMap and onYou to receive the first event before starting the logic
-    // The tile map and the "me" info are required for the following classes and methods
+    // Wait onConfig, onMap and onYou to receive the first event before starting the logic
+    // The average parcel score, the tile map and the "me" info are required for the following classes and methods
     Promise.all(promiseList).then(async () => {
       this.#planLibrary.push(new GoToPlan(this));
       this.#planLibrary.push(new GoPickUpPlan(this));
@@ -112,7 +112,7 @@ export class Agent {
   }
 
   async #generateBestIntention() {
-    this.#intentionList.clear();
+    this.#intentionList.clean();
 
     // Store the intention of delivering the parcels we are carrying
     // TODO: carriedParcelsCount does not listen to carried parcels that are expired
@@ -191,7 +191,6 @@ export class Agent {
   }
 
   /**
-   * 
    * @param {Intention} intention 
    */
   async #pushIntention(intention) {
@@ -309,7 +308,7 @@ class IntentionList {
     return this.#goPutDown;
   }
 
-  clear() {
+  clean() {
     this.#goTo = [];
     this.#goPickUp = [];
     this.#goPutDown = [];

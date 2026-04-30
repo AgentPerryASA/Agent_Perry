@@ -2,7 +2,6 @@
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
 import { Agent } from "./agent.js";
-import { Coordinates } from "./coordinates.js";
 import {
   GoPickUpIntention,
   GoToIntention,
@@ -82,6 +81,7 @@ class PlanBase {
 export class GoToPlan extends PlanBase {
   #pathFinder;
 
+  #MAX_MOVE_ATTEMPTS = 20
   #moveAttemptCount;
 
   /**
@@ -109,15 +109,24 @@ export class GoToPlan extends PlanBase {
     this.isStopped = false;
 
     const end = intention.destinationCoordinates;
-    let isPathCompleted = false;
+    let path = [];
+    let blockPoint;
+
+    path = this.#pathFinder.search(this.agent.me.coordinates, end);
 
     do {
-      // TODO: temporarily replace the tile that stopped the movement with 0
-      const path = this.#pathFinder.search(this.agent.me.coordinates, end);
-      if (path) {
-        isPathCompleted = await this.#executePath(path);
+      if (blockPoint) {
+        // Temporarily replace the position of the obstacle with a '0' tile
+        path = this.#pathFinder.search(this.agent.me.coordinates, end, blockPoint);
       }
-    } while (!isPathCompleted && this.isRunning);
+
+      if (path.length > 0) {
+        blockPoint = await this.#executePath(path);
+      }
+
+
+      // Repeat the loop if the plan is still running but the path is not completed (due to a block on the path)
+    } while (blockPoint && this.isRunning);
 
     this.isRunning = false;
   }
@@ -134,14 +143,14 @@ export class GoToPlan extends PlanBase {
 
       if (this.isStopped) {
         this.isRunning = false;
-        return false;
+        return;
       }
 
       await new Promise((res) => setTimeout(res, 100));
 
       if (this.isStopped) {
         this.isRunning = false;
-        return false;
+        return;
       }
 
       this.#moveAttemptCount++;
@@ -171,64 +180,18 @@ export class GoToPlan extends PlanBase {
 
       if (!movedHorizontally && !movedVertically) {
         // Agent did not move
-        if (this.#moveAttemptCount > 10) {
-          return false;
+        if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
+          // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
+          return step;
         }
       } else {
+        // Agent moved
         this.#moveAttemptCount = 0;
         i++;
       }
     }
 
-    // for (const step of path) {
-    //   if (this.isStopped) {
-    //     this.isRunning = false;
-    //     return false;
-    //   }
-
-    //   await new Promise((res) => setTimeout(res, 100));
-
-    //   if (this.isStopped) {
-    //     this.isRunning = false;
-    //     return false;
-    //   }
-
-    //   this.#moveAttemptCount++;
-
-    //   let movedHorizontally;
-    //   let movedVertically;
-
-    //   if (a.coordinates.x < step.x) {
-    //     movedHorizontally = await this.agent.socket.emitMove('right');
-    //   } else if (a.coordinates.x > step.x) {
-    //     movedHorizontally = await this.agent.socket.emitMove('left');
-    //   }
-
-    //   if (movedHorizontally) {
-    //     a.coordinates.x = movedHorizontally.x;
-    //   }
-
-    //   if (a.coordinates.y < step.y) {
-    //     movedVertically = await this.agent.socket.emitMove('up');
-    //   } else if (a.coordinates.y > step.y) {
-    //     movedVertically = await this.agent.socket.emitMove('down');
-    //   }
-
-    //   if (movedVertically) {
-    //     a.coordinates.y = movedVertically.y;
-    //   }
-
-    //   if (!movedHorizontally && !movedVertically) {
-    //     if (this.#moveAttemptCount > 10) {
-    //       console.log(step.x, step.y)
-    //       return false;
-    //     }
-    //   } else {
-    //     this.#moveAttemptCount = 0;
-    //   }
-    // }
-
-    return true;
+    return;
   }
 }
 

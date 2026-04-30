@@ -11,9 +11,10 @@ export class PathFinder {
   /**
    * @param {{x:number, y:number}} start
    * @param {{x:number, y:number}} end
+   * @param {MapPoint | undefined} pointToIgnore
    */
-  search(start, end) {
-    return this.#algorithm.search(start, end);
+  search(start, end, pointToIgnore = undefined) {
+    return this.#algorithm.search(start, end, pointToIgnore);
   }
 }
 
@@ -44,31 +45,14 @@ class Astar {
   }
 
   /**
-   * @param {MapPoint} p1 
-   * @param {MapPoint} p2 
-   * @returns The Manhattan distance between the two given points
-   */
-  #heuristic(p1, p2) {
-    let d1 = Math.abs(p2.x - p1.x);
-    let d2 = Math.abs(p2.y - p1.y);
-
-    return d1 + d2;
-  }
-
-  /**
    * @param {{x:number, y:number}} startPoint
    * @param {{x:number, y:number}} endPoint
+   * @param {MapPoint | undefined} pointToIgnore
    * @returns The shortest path from startPoint to endPoint in Manhattan distance
    */
-  search(startPoint, endPoint) {
+  search(startPoint, endPoint, pointToIgnore = undefined) {
     // Clean points info (parent and functions) before a new run
-    const cols = this.#map.length
-    const rows = this.#map[0].length;
-    for (let i = 0; i < cols; i++) {
-      for (let j = 0; j < rows; j++) {
-        this.#map[i][j].clean();
-      }
-    }
+    this.#cleanForNewSearch(pointToIgnore);
 
     const start = this.#map[startPoint.x][startPoint.y];
     const end = this.#map[endPoint.x][endPoint.y];
@@ -124,6 +108,49 @@ class Astar {
         }
       }
     }
+
+    return [];
+  }
+
+  /**
+   * @param {MapPoint | undefined} pointToIgnore 
+   */
+  #cleanForNewSearch(pointToIgnore = undefined) {
+    // Clean points info (parent and functions)
+    const cols = this.#map.length
+    const rows = this.#map[0].length;
+    for (let i = 0; i < cols; i++) {
+      for (let j = 0; j < rows; j++) {
+        this.#map[i][j].clean();
+      }
+    }
+
+    // If a point needs to be ignored...  
+    if (pointToIgnore) {
+      // ...temporarily update its neighbors so that they ignore it, namely do not put it as thier neighbor
+      for (const neighbor of pointToIgnore.neighbors) {
+        neighbor.updateNeighbors(this.#map, pointToIgnore);
+      }
+
+      // Reset the neighbors after a while, so that the point is walkable again
+      setTimeout(() => {
+        for (const neighbor of pointToIgnore.neighbors) {
+          neighbor.updateNeighbors(this.#map);
+        }
+      }, 5000);
+    }
+  }
+
+  /**
+   * @param {MapPoint} p1 
+   * @param {MapPoint} p2 
+   * @returns The Manhattan distance between the two given points
+   */
+  #heuristic(p1, p2) {
+    let d1 = Math.abs(p2.x - p1.x);
+    let d2 = Math.abs(p2.y - p1.y);
+
+    return d1 + d2;
   }
 }
 
@@ -170,50 +197,57 @@ export class MapPoint {
   }
 
   /**
-   * @param {MapPoint[][]} map 
+   * @param {MapPoint[][]} map
+   * @param {MapPoint | undefined} pointToIgnore
    */
-  updateNeighbors(map) {
+  updateNeighbors(map, pointToIgnore = undefined) {
+    this.#neighbors = [];
+
     if (this.#w == '0') return;
 
     let i = this.#x;
     let j = this.#y;
 
-    // above
+    // Above
     if (
-      j < map[0].length - 1 &&    // A tile above exists
-      map[i][j + 1].w != '0' &&   // The tile above is walkable
-      map[i][j + 1].w != '↓' &&   // The tile above allows to move up
-      this.#w != '↓'              // This tile allows to move up
+      j < map[0].length - 1 &&                  // A tile above exists
+      !map[i][j + 1].isEqual(pointToIgnore) &&  // The tile above does not have to be ignored
+      map[i][j + 1].w != '0' &&                 // The tile above is walkable
+      map[i][j + 1].w != '↓' &&                 // The tile above allows to move up
+      this.#w != '↓'                            // This tile allows to move up
     ) {
       this.#neighbors.push(map[i][j + 1]);
     }
 
-    // below
+    // Below
     if (
-      j > 0 &&                    // A tile below exists
-      map[i][j - 1].w != '0' &&   // The tile below si walkable
-      map[i][j - 1].w != '↑' &&   // The tile below allows to move down
-      this.#w != '↑'              // This tile allows to move down
+      j > 0 &&                                  // A tile below exists
+      !map[i][j - 1].isEqual(pointToIgnore) &&  // The tile below does not have to be ignored
+      map[i][j - 1].w != '0' &&                 // The tile below si walkable
+      map[i][j - 1].w != '↑' &&                 // The tile below allows to move down
+      this.#w != '↑'                            // This tile allows to move down
     ) {
       this.#neighbors.push(map[i][j - 1]);
     }
 
-    // right
+    // Right
     if (
-      i < map.length - 1 &&       // A tile on the right exists
-      map[i + 1][j].w != '0' &&   // The tile on the right is walkable
-      map[i + 1][j].w != '←' &&   // The tile on the right allows to move right
-      this.#w != '←'              // This tile allows to move right
+      i < map.length - 1 &&                     // A tile on the right exists
+      !map[i + 1][j].isEqual(pointToIgnore) &&  // The tile on the right does not have to be ignored
+      map[i + 1][j].w != '0' &&                 // The tile on the right is walkable
+      map[i + 1][j].w != '←' &&                 // The tile on the right allows to move right
+      this.#w != '←'                            // This tile allows to move right
     ) {
       this.#neighbors.push(map[i + 1][j]);
     }
 
-    // left
+    // Left
     if (
-      i > 0 &&                    // A tile on the left exists
-      map[i - 1][j].w != '0' &&   // The tile on the left is walkable
-      map[i - 1][j].w != '→' &&   // The tile on the left allows to move left
-      this.#w != '→'              // This tile allows to move left
+      i > 0 &&                                  // A tile on the left exists
+      !map[i - 1][j].isEqual(pointToIgnore) &&  // The tile on the left does not have to be ignored
+      map[i - 1][j].w != '0' &&                 // The tile on the left is walkable
+      map[i - 1][j].w != '→' &&                 // The tile on the left allows to move left
+      this.#w != '→'                            // This tile allows to move left
     ) {
       this.#neighbors.push(map[i - 1][j]);
     }
@@ -224,5 +258,13 @@ export class MapPoint {
     this.g = 0;
     this.h = 0;
     this.parent = undefined;
+  }
+
+  /**
+   * @param {MapPoint | undefined} point 
+   * @returns Whether the given point has the same coordinates as this (false if point is undefined)
+   */
+  isEqual(point) {
+    return point && this.#x == point.x && this.#y == point.y;
   }
 }
