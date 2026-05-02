@@ -124,10 +124,8 @@ export class Agent {
 
     // Store the intentions of picking up all the free parcels around us
     for (const parcel of this.#internalBelief.parcelList) {
-      if (!parcel.parcel.carriedBy) {
-        const intention = new GoPickUpIntention(parcel.parcel);
-        this.#intentionList.goPickUp.push(intention);
-      }
+      const intention = new GoPickUpIntention(parcel.parcel);
+      this.#intentionList.goPickUp.push(intention);
     }
 
     // Store the intentions of going to green tiles, if the are no free parcels around us
@@ -200,7 +198,6 @@ export class Agent {
     }
 
     this.#currentIntention = intention;
-    console.log(this.#currentIntention)
 
     await this.#achieveCurrentIntention();
   }

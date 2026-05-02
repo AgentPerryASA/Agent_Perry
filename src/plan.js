@@ -113,8 +113,19 @@ export class GoToPlan extends PlanBase {
     let blockPoint;
 
     path = this.#pathFinder.search(this.agent.me.coordinates, end);
+    if (this.#pathFinder.search(end, this.agent.me.coordinates).length == 0) {
+      // One-way area detected, no outgoing path from the end point exist
+      this.#pathFinder.removePoint(new MapPoint({ x: end.x, y: end.y, w: '' }));
+
+      // Immediately stop the execution
+      this.stop();
+      this.isRunning = false;
+      return;
+    }
 
     do {
+      // TODO: what if no paths are found?
+
       if (blockPoint) {
         // Temporarily replace the position of the obstacle with a '0' tile
         path = this.#pathFinder.search(this.agent.me.coordinates, end, blockPoint);
@@ -123,7 +134,6 @@ export class GoToPlan extends PlanBase {
       if (path.length > 0) {
         blockPoint = await this.#executePath(path);
       }
-
 
       // Repeat the loop if the plan is still running but the path is not completed (due to a block on the path)
     } while (blockPoint && this.isRunning);

@@ -16,6 +16,13 @@ export class PathFinder {
   search(start, end, pointToIgnore = undefined) {
     return this.#algorithm.search(start, end, pointToIgnore);
   }
+
+  /**
+   * @param {MapPoint} point 
+   */
+  removePoint(point) {
+    this.#algorithm.removePoint(point);
+  }
 }
 
 class Astar {
@@ -42,6 +49,13 @@ class Astar {
         this.#map[i][j].updateNeighbors(this.#map);
       }
     }
+  }
+
+  /**
+   * @param {MapPoint} point 
+   */
+  removePoint(point) {
+    this.#ignorePoint(point, false);
   }
 
   /**
@@ -125,16 +139,25 @@ class Astar {
       }
     }
 
-    // If a point needs to be ignored...  
     if (pointToIgnore) {
-      // ...temporarily update its neighbors so that they ignore it, namely do not put it as thier neighbor
-      for (const neighbor of pointToIgnore.neighbors) {
-        neighbor.updateNeighbors(this.#map, pointToIgnore);
-      }
+      this.#ignorePoint(pointToIgnore, true);
+    }
+  }
 
+  /**
+   * @param {MapPoint} point
+   * @param {boolean} resetAfterTimeout
+   */
+  #ignorePoint(point, resetAfterTimeout) {
+    // Update the neighbors of the point so that they ignore it, namely do not put the point as thier neighbor
+    for (const neighbor of point.neighbors) {
+      neighbor.updateNeighbors(this.#map, point);
+    }
+
+    if (resetAfterTimeout) {
       // Reset the neighbors after a while, so that the point is walkable again
       setTimeout(() => {
-        for (const neighbor of pointToIgnore.neighbors) {
+        for (const neighbor of point.neighbors) {
           neighbor.updateNeighbors(this.#map);
         }
       }, 5000);
