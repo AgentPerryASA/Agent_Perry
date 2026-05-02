@@ -113,11 +113,16 @@ export class GoToPlan extends PlanBase {
     let blockPoint;
 
     path = this.#pathFinder.search(this.agent.me.coordinates, end);
-    if (this.#pathFinder.search(end, this.agent.me.coordinates).length == 0) {
+    //AN: Sometimes it block itself because it tries to go in the same cell it currently is
+    console.log("Go from ",this.agent.me.coordinates, "to", end, "len", path.length)
+    let ret = this.#pathFinder.search(end, this.agent.me.coordinates)
+
+    if (ret.length == 0 && this.agent.me.coordinates.x != end.x && this.agent.me.coordinates.y!=end.y) {
       // One-way area detected, no outgoing path from the end point exist, so
       // remove the end point both from the map of pathFinder and from the agent beliefs
       this.#pathFinder.removePoint(new MapPoint({ x: end.x, y: end.y, w: '' }));
       // TODO: TEO
+      console.log("Remove ",end, "from", this.agent.me.coordinates, ret, ret.length)
       this.agent.internalBelief.removeTile(end);
 
       // Immediately stop the execution
@@ -128,7 +133,6 @@ export class GoToPlan extends PlanBase {
 
     do {
       // TODO: what if no paths are found?
-
       if (blockPoint) {
         // Temporarily replace the position of the obstacle with a '0' tile
         path = this.#pathFinder.search(this.agent.me.coordinates, end, blockPoint);
@@ -195,6 +199,7 @@ export class GoToPlan extends PlanBase {
         // Agent did not move
         if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
           // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
+          console.log("Exceed max step attempts")
           return step;
         }
       } else {
@@ -232,6 +237,7 @@ export class GoPickUpPlan extends PlanBase {
     }
 
     const result = await this.agent.socket.emitPickup();
+    console.log("emitted pickup") //AN: sometimes pickup is emitted when in a white cell
     if (result.length > 0) {
       this.agent.internalBelief.carriedParcelsCount += 1;
     }
@@ -264,6 +270,7 @@ export class GoPutDownPlan extends PlanBase {
     }
 
     const result = await this.agent.socket.emitPutdown();
+    console.log("Emitted putdown")
     if (result.length > 0) {
       this.agent.internalBelief.carriedParcelsCount = 0;
     }

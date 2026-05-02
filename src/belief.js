@@ -209,19 +209,23 @@ export class Beliefs {
 
   // TODO: TEO
   /**
-   * @param {{x:number, y:number}} param0 
+   * @param {{x:number, y:number}} param0
    */
   removeTile({ x: x, y: y }) {
     this.#tileMap.tiles[x][y] = "0";
 
-    let index = this.#tileMap.green.findIndex(c => c.isEqual(new Coordinates(x, y)))
+    let index = this.#tileMap.green.findIndex((c) =>
+      c.isEqual(new Coordinates(x, y)),
+    );
     if (index != -1) {
-      this.#tileMap.green.splice(index, 1)
+      this.#tileMap.green.splice(index, 1);
     }
 
-    index = this.#tileMap.red.findIndex(c => c.isEqual(new Coordinates(x, y)))
+    index = this.#tileMap.red.findIndex((c) =>
+      c.isEqual(new Coordinates(x, y)),
+    );
     if (index != -1) {
-      this.#tileMap.red.splice(index, 1)
+      this.#tileMap.red.splice(index, 1);
     }
   }
 

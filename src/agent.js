@@ -2,6 +2,34 @@
 /** @typedef Plan @type { import('./plan.js').Plan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
+/**
+ * MAP 25c1_8
+ *AN: 
+ 
+ In general: every time it seems stuck, executePath continuous to cycle
+ 
+ A high penalty is assigned every time it tries to drop a parcel. Problem is less present if no red tile is next to another red tile. I notice that it happen GoPutDownPlan appear several times in the console: when it happens executePath is "stuck" (delete comment on console.log and see)
+
+ sometimes pickup is emitted when in a white cell: the agent is immediately after a green cell. Other times emitpickup is executed on a red cell. This happen if a removeTile is emitted immediately before, meaning it does not find another path to go back. Removing the check for the return seems to solve at least this issue. Example:
+
+ Emitted putdown
+ Stopping  GoPutDownPlan { isStopped: false }
+ exe  GoPickUpIntention {}
+ Go from  Coordinates { x: 18, y: 16 } to Coordinates { x: 13, y: 14 }
+ Remove  Coordinates { x: 13, y: 14 } from Coordinates { x: 18, y: 16 } [] 0
+ emitted pickup
+ Stopping  GoPickUpPlan { isStopped: false }
+ exe  GoPickUpIntention {}
+ Go from  Coordinates { x: 18, y: 16 } to Coordinates { x: 15, y: 14 }
+ Remove  Coordinates { x: 15, y: 14 } from Coordinates { x: 18, y: 16 } [] 0
+ emitted pickup
+
+ Last thing: seems like it change parcel too frequently?
+
+  Sometimes not the nearest red is chosen
+
+ */
+
 import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
@@ -216,12 +244,14 @@ export class Agent {
   async #achieveCurrentIntention() {
     if (this.#currentIntention) {
       await this.#stopCurrentIntention();
+      console.log("Stopping ", this.#currentPlan)
 
       // TODO: check if a new intention is selected
-      // TOOD: the check if the parcel is still free is not needed, a new intention will be generated next iteration
+      // TODO: the check if the parcel is still free is not needed, a new intention will be generated next iteration
 
       this.#currentPlan = this.selectPlan(this.#currentIntention);
       if (this.#currentPlan) {
+        console.log("exe ",this.#currentIntention)
         // @ts-ignore
         this.#currentPlan.execute(this.#currentIntention);
       }

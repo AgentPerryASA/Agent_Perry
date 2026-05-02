@@ -18,7 +18,7 @@ export class PathFinder {
   }
 
   /**
-   * @param {MapPoint} point 
+   * @param {MapPoint} point
    */
   removePoint(point) {
     this.#algorithm.removePoint(point);
@@ -33,7 +33,7 @@ class Astar {
    * @param {string[][]} map A column-wise matrix, so map[x][y] returns cell (x, y)
    */
   constructor(map) {
-    const cols = map.length
+    const cols = map.length;
     const rows = map[0].length;
 
     this.#map = [];
@@ -52,7 +52,7 @@ class Astar {
   }
 
   /**
-   * @param {MapPoint} point 
+   * @param {MapPoint} point
    */
   removePoint(point) {
     this.#ignorePoint(point, false);
@@ -127,11 +127,11 @@ class Astar {
   }
 
   /**
-   * @param {MapPoint | undefined} pointToIgnore 
+   * @param {MapPoint | undefined} pointToIgnore
    */
   #cleanForNewSearch(pointToIgnore = undefined) {
     // Clean points info (parent and functions)
-    const cols = this.#map.length
+    const cols = this.#map.length;
     const rows = this.#map[0].length;
     for (let i = 0; i < cols; i++) {
       for (let j = 0; j < rows; j++) {
@@ -165,8 +165,8 @@ class Astar {
   }
 
   /**
-   * @param {MapPoint} p1 
-   * @param {MapPoint} p2 
+   * @param {MapPoint} p1
+   * @param {MapPoint} p2
    * @returns The Manhattan distance between the two given points
    */
   #heuristic(p1, p2) {
@@ -178,19 +178,19 @@ class Astar {
 }
 
 export class MapPoint {
-  #x;         // x location of the map point
-  #y;         // y location of the map point
-  #w;         // weight ('0'=no-walkable, arrow=neighbors restriction, walkable otherwise)
-  f;          // total cost function
-  g;          // cost function from start to the current map point
-  h;          // heuristic estimated cost function from current map point to the goal
+  #x; // x location of the map point
+  #y; // y location of the map point
+  #w; // weight ('0'=no-walkable, arrow=neighbors restriction, walkable otherwise)
+  f; // total cost function
+  g; // cost function from start to the current map point
+  h; // heuristic estimated cost function from current map point to the goal
   /** @type { MapPoint[] } */
   #neighbors; // neighbors of the current map point
   /** @type { MapPoint | undefined } */
-  parent;     // immediate source of the current map point
+  parent; // immediate source of the current map point
 
   /**
-   * 
+   *
    * @param {{x:number, y:number, w:string}} point
    */
   constructor(point) {
@@ -226,51 +226,51 @@ export class MapPoint {
   updateNeighbors(map, pointToIgnore = undefined) {
     this.#neighbors = [];
 
-    if (this.#w == '0') return;
+    if (this.#w == "0") return;
 
     let i = this.#x;
     let j = this.#y;
 
     // Above
     if (
-      j < map[0].length - 1 &&                  // A tile above exists
-      !map[i][j + 1].isEqual(pointToIgnore) &&  // The tile above does not have to be ignored
-      map[i][j + 1].w != '0' &&                 // The tile above is walkable
-      map[i][j + 1].w != '↓' &&                 // The tile above allows to move up
-      this.#w != '↓'                            // This tile allows to move up
+      j < map[0].length - 1 && // A tile above exists
+      !map[i][j + 1].isEqual(pointToIgnore) && // The tile above does not have to be ignored
+      map[i][j + 1].w != "0" && // The tile above is walkable
+      map[i][j + 1].w != "↓" && // The tile above allows to move up
+      this.#w != "↓" // This tile allows to move up
     ) {
       this.#neighbors.push(map[i][j + 1]);
     }
 
     // Below
     if (
-      j > 0 &&                                  // A tile below exists
-      !map[i][j - 1].isEqual(pointToIgnore) &&  // The tile below does not have to be ignored
-      map[i][j - 1].w != '0' &&                 // The tile below si walkable
-      map[i][j - 1].w != '↑' &&                 // The tile below allows to move down
-      this.#w != '↑'                            // This tile allows to move down
+      j > 0 && // A tile below exists
+      !map[i][j - 1].isEqual(pointToIgnore) && // The tile below does not have to be ignored
+      map[i][j - 1].w != "0" && // The tile below si walkable
+      map[i][j - 1].w != "↑" && // The tile below allows to move down
+      this.#w != "↑" // This tile allows to move down
     ) {
       this.#neighbors.push(map[i][j - 1]);
     }
 
     // Right
     if (
-      i < map.length - 1 &&                     // A tile on the right exists
-      !map[i + 1][j].isEqual(pointToIgnore) &&  // The tile on the right does not have to be ignored
-      map[i + 1][j].w != '0' &&                 // The tile on the right is walkable
-      map[i + 1][j].w != '←' &&                 // The tile on the right allows to move right
-      this.#w != '←'                            // This tile allows to move right
+      i < map.length - 1 && // A tile on the right exists
+      !map[i + 1][j].isEqual(pointToIgnore) && // The tile on the right does not have to be ignored
+      map[i + 1][j].w != "0" && // The tile on the right is walkable
+      map[i + 1][j].w != "←" && // The tile on the right allows to move right
+      this.#w != "←" // This tile allows to move right
     ) {
       this.#neighbors.push(map[i + 1][j]);
     }
 
     // Left
     if (
-      i > 0 &&                                  // A tile on the left exists
-      !map[i - 1][j].isEqual(pointToIgnore) &&  // The tile on the left does not have to be ignored
-      map[i - 1][j].w != '0' &&                 // The tile on the left is walkable
-      map[i - 1][j].w != '→' &&                 // The tile on the left allows to move left
-      this.#w != '→'                            // This tile allows to move left
+      i > 0 && // A tile on the left exists
+      !map[i - 1][j].isEqual(pointToIgnore) && // The tile on the left does not have to be ignored
+      map[i - 1][j].w != "0" && // The tile on the left is walkable
+      map[i - 1][j].w != "→" && // The tile on the left allows to move left
+      this.#w != "→" // This tile allows to move left
     ) {
       this.#neighbors.push(map[i - 1][j]);
     }
@@ -284,7 +284,7 @@ export class MapPoint {
   }
 
   /**
-   * @param {MapPoint | undefined} point 
+   * @param {MapPoint | undefined} point
    * @returns Whether the given point has the same coordinates as this (false if point is undefined)
    */
   isEqual(point) {
