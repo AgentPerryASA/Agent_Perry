@@ -142,7 +142,7 @@ export class GoToPlan extends PlanBase {
   }
 
   /**
-   * @param {MapPoint[]} path 
+   * @param {MapPoint[]} path
    */
   async #executePath(path) {
     const a = this.agent.me;
@@ -169,9 +169,9 @@ export class GoToPlan extends PlanBase {
       let movedVertically;
 
       if (a.coordinates.x < step.x) {
-        movedHorizontally = await this.agent.socket.emitMove('right');
+        movedHorizontally = await this.agent.socket.emitMove("right");
       } else if (a.coordinates.x > step.x) {
-        movedHorizontally = await this.agent.socket.emitMove('left');
+        movedHorizontally = await this.agent.socket.emitMove("left");
       }
 
       if (movedHorizontally) {
@@ -179,9 +179,9 @@ export class GoToPlan extends PlanBase {
       }
 
       if (a.coordinates.y < step.y) {
-        movedVertically = await this.agent.socket.emitMove('up');
+        movedVertically = await this.agent.socket.emitMove("up");
       } else if (a.coordinates.y > step.y) {
-        movedVertically = await this.agent.socket.emitMove('down');
+        movedVertically = await this.agent.socket.emitMove("down");
       }
 
       if (movedVertically) {
@@ -230,7 +230,7 @@ export class GoPickUpPlan extends PlanBase {
 
     const result = await this.agent.socket.emitPickup();
     if (result.length > 0) {
-      this.agent.carriedParcelsCount++;
+      this.agent.internalBelief.carriedParcelsCount += 1;
     }
 
     this.isRunning = false;
@@ -262,7 +262,7 @@ export class GoPutDownPlan extends PlanBase {
 
     const result = await this.agent.socket.emitPutdown();
     if (result.length > 0) {
-      this.agent.carriedParcelsCount = 0;
+      this.agent.internalBelief.carriedParcelsCount = 0;
     }
 
     this.isRunning = false;

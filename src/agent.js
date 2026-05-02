@@ -19,10 +19,6 @@ export class Agent {
   #currentIntention;
   /** @type {Plan | undefined} */
   #currentPlan;
-  // TODO: put it into belief, used in GoPutDownPlan
-  carriedParcelsCount;
-  // TODO: put it into belief
-  #parcelMinScore;
 
   /** @type {Beliefs} */
   #internalBelief;
@@ -31,10 +27,7 @@ export class Agent {
     this.#me = new Me('', '', new Coordinates(0, 0), 0);
     this.#planLibrary = [];
     this.#intentionList = new IntentionList();
-    this.#internalBelief = new Beliefs()
-    this.carriedParcelsCount = 0;
-    this.#parcelMinScore = 0;
-
+    this.#internalBelief = new Beliefs();
     this.#socket = DjsConnect();
 
     this.init();
@@ -49,7 +42,7 @@ export class Agent {
   }
 
   get internalBelief() {
-    return this.#internalBelief
+    return this.#internalBelief;
   }
 
   init() {
@@ -58,8 +51,7 @@ export class Agent {
     // Store relevant map configuration
     promiseList.push(new Promise(resolve => {
       this.#socket.onConfig(config => {
-        const avgScore = config.GAME.parcels.reward_avg;
-        this.#parcelMinScore = avgScore * 0.5;
+        this.#internalBelief.updateGameConfiguration(config)
 
         resolve(true);
       });
@@ -104,6 +96,7 @@ export class Agent {
       // Keep track of parcels around us
       this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels)
+        this.#internalBelief.updateNearAgentList(sensing.agents)
 
         // Constantly generate the best intention based on our sensing
         await this.#generateBestIntention();
@@ -116,7 +109,7 @@ export class Agent {
 
     // Store the intention of delivering the parcels we are carrying
     // TODO: carriedParcelsCount does not listen to carried parcels that are expired
-    if (this.carriedParcelsCount >= 1) {
+    if (this.#internalBelief.carriedParcelsCount >= 1) {
       for (const redTile of this.#internalBelief.tileMap.red) {
         this.#intentionList.goPutDown.push(new GoPutDownIntention(redTile));
       }
@@ -166,11 +159,30 @@ export class Agent {
     let highestScore = 0;
     for (const intention of this.#intentionList.goPickUp) {
       const parcelScore = intention.parcel.reward;
-      if (parcelScore > highestScore && parcelScore >= this.#parcelMinScore) {
-        // TODO: check if an agent is closer
+      if (parcelScore > highestScore && parcelScore >= this.#internalBelief.parcelMinScore) {
 
-        highestScore = parcelScore;
-        bestIntention = intention;
+        for(let i=0;i<this.#internalBelief.nearAgentList.length;i+=1) {
+          let currentCheckedAgent = this.#internalBelief.nearAgentList[i]
+          const x = currentCheckedAgent.x;
+          const y = currentCheckedAgent.y;
+
+          if (x !== undefined && y !== undefined) {
+            let agentDst = this.#distance({ x, y }, intention.parcel);
+            let myDst = this.#distance(this.#me.coordinates,intention.parcel)
+            let dst = myDst-agentDst
+
+            if(dst < 0) {
+              //If the difference on distances is positive, this means another agent is nearer to the packet
+              highestScore = parcelScore;
+              bestIntention = intention;
+            }
+          }
+        }
+        if(this.#internalBelief.nearAgentList.length==0) {
+          //List could be empty: the package is the best on that case
+          highestScore = parcelScore;
+          bestIntention = intention;
+        }
       }
     }
 
