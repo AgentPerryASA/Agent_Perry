@@ -114,8 +114,11 @@ export class GoToPlan extends PlanBase {
 
     path = this.#pathFinder.search(this.agent.me.coordinates, end);
     if (this.#pathFinder.search(end, this.agent.me.coordinates).length == 0) {
-      // One-way area detected, no outgoing path from the end point exist
+      // One-way area detected, no outgoing path from the end point exist, so
+      // remove the end point both from the map of pathFinder and from the agent beliefs
       this.#pathFinder.removePoint(new MapPoint({ x: end.x, y: end.y, w: '' }));
+      // TODO: TEO
+      this.agent.internalBelief.removeTile(end);
 
       // Immediately stop the execution
       this.stop();
