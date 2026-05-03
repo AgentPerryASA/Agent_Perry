@@ -199,7 +199,6 @@ export class GoToPlan extends PlanBase {
         // Agent did not move
         if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
           // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
-          console.log("Exceed max step attempts")
           return step;
         }
       } else {

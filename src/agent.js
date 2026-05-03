@@ -180,6 +180,10 @@ export class Agent {
     // NOTE: priority to delivery intention
     // TODO: go to pick up if a free parcel is along the path
     if (bestIntention) {
+      //If bestintention is still putDown but the same is still executed, return null
+      if(this.#currentPlan && this.#currentPlan instanceof GoPutDownPlan && this.#currentPlan.isRunning==true) {
+        return
+      }
       return bestIntention;
     }
 
@@ -211,6 +215,11 @@ export class Agent {
           bestIntention = intention;
         }
       }
+    }
+
+    if(bestIntention && this.#currentPlan && this.#currentPlan instanceof GoPickUpPlan && this.#currentPlan.isRunning==true) {
+      //If it was already planning of picking up, then return with null
+      return
     }
 
     // Best intention candidate: go to the nearest green tile, if we have not green tiles around us
