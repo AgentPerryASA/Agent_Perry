@@ -65,15 +65,15 @@ class PlanBase {
 
   async stop() {
     if (this.#isRunning) {
+      if (this.#subPlan) {
+        await this.#subPlan.stop();
+      }
+
       this.isStopped = true;
 
       await new Promise((resolve) => {
         this.#stopResolver = resolve;
       });
-
-      if (this.#subPlan) {
-        await this.#subPlan.stop();
-      }
     }
   }
 }
@@ -114,15 +114,15 @@ export class GoToPlan extends PlanBase {
 
     path = this.#pathFinder.search(this.agent.me.coordinates, end);
     //AN: Sometimes it block itself because it tries to go in the same cell it currently is
-    console.log("Go from ",this.agent.me.coordinates, "to", end, "len", path.length)
+    console.log("Go from ", this.agent.me.coordinates, "to", end, "len", path.length)
     let ret = this.#pathFinder.search(end, this.agent.me.coordinates)
 
-    if (ret.length == 0 && this.agent.me.coordinates.x != end.x && this.agent.me.coordinates.y!=end.y) {
+    if (ret.length == 0 && this.agent.me.coordinates.x != end.x && this.agent.me.coordinates.y != end.y) {
       // One-way area detected, no outgoing path from the end point exist, so
       // remove the end point both from the map of pathFinder and from the agent beliefs
       this.#pathFinder.removePoint(new MapPoint({ x: end.x, y: end.y, w: '' }));
       // TODO: TEO
-      console.log("Remove ",end, "from", this.agent.me.coordinates, ret, ret.length)
+      console.log("Remove ", end, "from", this.agent.me.coordinates, ret, ret.length)
       this.agent.internalBelief.removeTile(end);
 
       // Immediately stop the execution
@@ -175,6 +175,8 @@ export class GoToPlan extends PlanBase {
       let movedHorizontally;
       let movedVertically;
 
+      console.log(step.x, step.y)
+
       if (a.coordinates.x < step.x) {
         movedHorizontally = await this.agent.socket.emitMove("right");
       } else if (a.coordinates.x > step.x) {
@@ -197,6 +199,8 @@ export class GoToPlan extends PlanBase {
 
       if (!movedHorizontally && !movedVertically) {
         // Agent did not move
+        console.log(movedHorizontally, movedVertically)
+        console.log("FAIL")
         if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
           // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
           return step;

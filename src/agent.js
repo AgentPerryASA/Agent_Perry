@@ -39,6 +39,7 @@ import { Beliefs } from "./belief.js"
 
 export class Agent {
   #socket;
+  // TODO: TEO
   #me;
   /** @type { Plan[] } */
   #planLibrary;
@@ -52,7 +53,7 @@ export class Agent {
   #internalBelief;
 
   constructor() {
-    this.#me = new Me('', '', new Coordinates(0, 0), 0);
+    this.#me = new Me('', '', 0, new Coordinates(0, 0));
     this.#planLibrary = [];
     this.#intentionList = new IntentionList();
     this.#internalBelief = new Beliefs();
@@ -99,14 +100,16 @@ export class Agent {
       this.#socket.onYou(async ({ id, name, x, y, score }) => {
         // Skip intermediate values (0.6 or 0.4)
         if ((x != undefined && x % 1 == 0) && (y != undefined && y % 1 == 0)) {
-          this.#me = new Me(
-            id,
-            name,
-            new Coordinates(x, y),
-            score
-          );
+          if (this.#me.id == '') {
+            this.#me = new Me(
+              id,
+              name,
+              score,
+              new Coordinates(x, y)
+            );
 
-          resolve(true);
+            resolve(true);
+          }
         }
       });
     }));
@@ -132,7 +135,12 @@ export class Agent {
     });
   }
 
+  #lock = false;
   async #generateBestIntention() {
+    // if (this.#lock)
+    //   return;
+    this.#lock = true;
+
     this.#intentionList.clean();
 
     // Store the intention of delivering the parcels we are carrying
@@ -181,9 +189,9 @@ export class Agent {
     // TODO: go to pick up if a free parcel is along the path
     if (bestIntention) {
       //If bestintention is still putDown but the same is still executed, return null
-      if(this.#currentPlan && this.#currentPlan instanceof GoPutDownPlan && this.#currentPlan.isRunning==true) {
-        return
-      }
+      // if (this.#currentPlan && this.#currentPlan instanceof GoPutDownPlan && this.#currentPlan.isRunning == true) {
+      //   return
+      // }
       return bestIntention;
     }
 
@@ -192,12 +200,12 @@ export class Agent {
     for (const intention of this.#intentionList.goPickUp) {
       const parcelScore = intention.parcel.reward;
       if (parcelScore > highestScore && parcelScore >= this.#internalBelief.parcelMinScore) {
-        for (let i = 0; i < this.#internalBelief.nearAgentList.length; i += 1) {
+        for (let i = 0; i < this.#internalBelief.nearAgentList.length; i++) {
           let currentCheckedAgent = this.#internalBelief.nearAgentList[i]
           const x = currentCheckedAgent.x;
           const y = currentCheckedAgent.y;
 
-          if (x !== undefined && y !== undefined) {
+          if (x != undefined && y != undefined) {
             let agentDst = this.#distance({ x, y }, intention.parcel);
             let myDst = this.#distance(this.#me.coordinates, intention.parcel)
             let dst = myDst - agentDst
@@ -209,6 +217,7 @@ export class Agent {
             }
           }
         }
+
         if (this.#internalBelief.nearAgentList.length == 0) {
           //List could be empty: the package is the best on that case
           highestScore = parcelScore;
@@ -217,10 +226,10 @@ export class Agent {
       }
     }
 
-    if(bestIntention && this.#currentPlan && this.#currentPlan instanceof GoPickUpPlan && this.#currentPlan.isRunning==true) {
-      //If it was already planning of picking up, then return with null
-      return
-    }
+    // if (bestIntention && this.#currentPlan && this.#currentPlan instanceof GoPickUpPlan && this.#currentPlan.isRunning == true) {
+    //   //If it was already planning of picking up, then return with null
+    //   return
+    // }
 
     // Best intention candidate: go to the nearest green tile, if we have not green tiles around us
     if (!bestIntention) {
@@ -242,6 +251,7 @@ export class Agent {
   async #pushIntention(intention) {
     // Skip push if the intention remains the same
     if (this.#currentIntention && this.#currentIntention.isEqual(intention)) {
+      this.#lock = false;
       return;
     }
 
@@ -260,9 +270,11 @@ export class Agent {
 
       this.#currentPlan = this.selectPlan(this.#currentIntention);
       if (this.#currentPlan) {
-        console.log("exe ",this.#currentIntention)
+        console.log("exe ", this.#currentPlan)
         // @ts-ignore
         this.#currentPlan.execute(this.#currentIntention);
+
+        this.#lock = false;
       }
     }
   }
@@ -295,21 +307,20 @@ export class Agent {
 export class Me {
   #id;
   #name;
-  #coordinates;
   #score;
+  coordinates;
 
   /**
-   * Constructor of Me
    * @param {string} id 
    * @param {string} name 
-   * @param {Coordinates} coordinates 
    * @param {number} score 
+   * @param {Coordinates} coordinates 
    */
-  constructor(id, name, coordinates, score) {
+  constructor(id, name, score, coordinates) {
     this.#id = id;
     this.#name = name;
-    this.#coordinates = coordinates;
     this.#score = score;
+    this.coordinates = coordinates;
   }
 
   get id() {
@@ -318,10 +329,6 @@ export class Me {
 
   get name() {
     return this.#name;
-  }
-
-  get coordinates() {
-    return this.#coordinates;
   }
 
   get score() {

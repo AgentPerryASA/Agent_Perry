@@ -232,7 +232,8 @@ export class Beliefs {
   /**@param {IOConfig} config*/
   updateGameConfiguration(config) {
     const avgScore = config.GAME.parcels.reward_avg;
-    this.#parcelMinScore = avgScore * 0.5;
+    // TODO: TEO
+    this.#parcelMinScore = avgScore * 0.1;
   }
 
   /**@param {IOAgent[]} agents*/
