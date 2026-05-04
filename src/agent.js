@@ -52,6 +52,10 @@ export class Agent {
   /** @type {Beliefs} */
   #internalBelief;
 
+  sensingValue = 0;
+  oldSensingValue = 0;
+  randomMove=false
+
   constructor() {
     this.#me = new Me('', '', 0, new Coordinates(0, 0));
     this.#planLibrary = [];
@@ -122,21 +126,40 @@ export class Agent {
       this.#planLibrary.push(new GoPutDownPlan(this));
 
       // In case of no changes in the environment, so no sensing events received
-      this.#generateBestIntention();
+     this.#generateBestIntention();
 
       // Keep track of parcels around us
-      this.#socket.onSensing(async sensing => {
+        this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels)
         this.#internalBelief.updateNearAgentList(sensing.agents)
-
+        
         // Constantly generate the best intention based on our sensing
-        await this.#generateBestIntention();
-      });
-    });
+          await this.#generateBestIntention();
+          
+        });
+
+        setInterval(async ()=>{
+        if(this.sensingValue==this.oldSensingValue) {
+          console.log("stop detected")
+          this.randomMove = true
+          for (const greenTile of this.#internalBelief.tileMap.green) {
+            console.log("kjvnikfv")
+            this.#intentionList.goTo.push(new GoToIntention(greenTile));
+          }
+          console.log(this.#internalBelief.tileMap.green)
+          let rn = Math.floor(Math.random() * this.#intentionList.goTo.length);
+          let intention = this.#intentionList.goTo[rn]
+          await this.#pushIntention(intention)
+        } else {
+          console.log("test")
+          this.oldSensingValue=this.sensingValue;
+        }
+      },5000)})
   }
 
   #lock = false;
   async #generateBestIntention() {
+    this.sensingValue+=1
     // if (this.#lock)
     //   return;
     this.#lock = true;
@@ -214,6 +237,7 @@ export class Agent {
               //If the difference on distances is positive, this means another agent is nearer to the packet
               highestScore = parcelScore;
               bestIntention = intention;
+              this.randomMove=false
             }
           }
         }
@@ -222,6 +246,7 @@ export class Agent {
           //List could be empty: the package is the best on that case
           highestScore = parcelScore;
           bestIntention = intention;
+          this.randomMove=false;
         }
       }
     }
@@ -233,13 +258,16 @@ export class Agent {
 
     // Best intention candidate: go to the nearest green tile, if we have not green tiles around us
     if (!bestIntention) {
-      for (const intention of this.#intentionList.goTo) {
-        const distance = this.#distance(intention.destinationCoordinates, this.#me.coordinates);
-        if (distance < minDistance) {
-          minDistance = distance;
-          bestIntention = intention;
+      if(!this.randomMove) {
+        for (const intention of this.#intentionList.goTo) {
+          const distance = this.#distance(intention.destinationCoordinates, this.#me.coordinates);
+          if (distance < minDistance) {
+            minDistance = distance;
+            bestIntention = intention;
+          }
         }
       }
+      
     }
 
     return bestIntention;

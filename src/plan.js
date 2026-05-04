@@ -116,8 +116,9 @@ export class GoToPlan extends PlanBase {
     //AN: Sometimes it block itself because it tries to go in the same cell it currently is
     console.log("Go from ", this.agent.me.coordinates, "to", end, "len", path.length)
     let ret = this.#pathFinder.search(end, this.agent.me.coordinates)
-
-    if (ret.length == 0 && this.agent.me.coordinates.x != end.x && this.agent.me.coordinates.y != end.y) {
+    console.log(ret, ret.length)
+    // if (ret.length == 0 && this.agent.me.coordinates.x != end.x && this.agent.me.coordinates.y != end.y) {
+    if (ret.length == 0) {
       // One-way area detected, no outgoing path from the end point exist, so
       // remove the end point both from the map of pathFinder and from the agent beliefs
       this.#pathFinder.removePoint(new MapPoint({ x: end.x, y: end.y, w: '' }));
@@ -175,7 +176,7 @@ export class GoToPlan extends PlanBase {
       let movedHorizontally;
       let movedVertically;
 
-      console.log(step.x, step.y)
+      // console.log(step.x, step.y)
 
       if (a.coordinates.x < step.x) {
         movedHorizontally = await this.agent.socket.emitMove("right");

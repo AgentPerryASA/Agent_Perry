@@ -207,7 +207,6 @@ export class Beliefs {
     }
   }
 
-  // TODO: TEO
   /**
    * @param {{x:number, y:number}} param0
    */
