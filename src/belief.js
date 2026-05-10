@@ -9,19 +9,19 @@ export class WorldMap {
   /** @type { string[][] } */
   tiles;
   /** @type { TargetTile[] } */
-  green;
+  greenTiles;
   /** @type { TargetTile[] } */
-  red;
+  redTiles;
 
   /**
    * @param {string[][]} tiles
-   * @param {TargetTile[]} green
-   * @param {TargetTile[]} red
+   * @param {TargetTile[]} greenTiles
+   * @param {TargetTile[]} redTiles
    */
-  constructor(tiles, green, red) {
+  constructor(tiles, greenTiles, redTiles) {
     this.tiles = tiles;
-    this.green = green;
-    this.red = red;
+    this.greenTiles = greenTiles;
+    this.redTiles = redTiles;
   }
 }
 
@@ -200,17 +200,17 @@ export class Beliefs {
 
       if (tileType == "1") {
         // Green tiles (parcel spawn)
-        this.tileMap.green.push(new TargetTile(coordinates));
+        this.tileMap.greenTiles.push(new TargetTile(coordinates));
       } else if (tileType == "2") {
         // Red tiles (delivery)
-        this.tileMap.red.push(new TargetTile(coordinates));
+        this.tileMap.redTiles.push(new TargetTile(coordinates));
       }
     }
 
     // Retrieve paths from greens to reds and vice versa
     const pathFinder = new PathFinder(this.tileMap.tiles);
-    for (const green of this.tileMap.green) {
-      for (const red of this.tileMap.red) {
+    for (const green of this.tileMap.greenTiles) {
+      for (const red of this.tileMap.redTiles) {
         const path = pathFinder.search(green.coordinates, red.coordinates);
         if (path.length != 0) {
           // Check if the red tile is in a one-way area
@@ -224,29 +224,29 @@ export class Beliefs {
     }
 
     // Calculate probability of each path from greens according to the distance
-    for (let i = 0; i < this.tileMap.green.length; i++) {
-      const green = this.#tileMap.green[i];
+    for (let i = 0; i < this.tileMap.greenTiles.length; i++) {
+      const green = this.#tileMap.greenTiles[i];
 
       // Remove isolated greens
       if (green.pathList.size == 0) {
-        this.#tileMap.green.splice(i, 1);
+        this.#tileMap.greenTiles.splice(i, 1);
         continue;
       }
 
-      green.updatePathsProbability();
+      green.updatePathsWeight();
     }
 
     // Calculate probability of each path from reds according to the distance
-    for (let i = 0; i < this.tileMap.red.length; i++) {
-      const red = this.#tileMap.red[i];
+    for (let i = 0; i < this.tileMap.redTiles.length; i++) {
+      const red = this.#tileMap.redTiles[i];
 
       // Remove isolated reds
       if (red.pathList.size == 0) {
-        this.#tileMap.red.splice(i, 1);
+        this.#tileMap.redTiles.splice(i, 1);
         continue;
       }
 
-      red.updatePathsProbability();
+      red.updatePathsWeight();
     }
   }
 
@@ -324,12 +324,12 @@ class TargetTile {
     this.#pathList.set(destinationTile, new WeightedPath(0, path));
   }
 
-  updatePathsProbability() {
+  updatePathsWeight() {
     for (const weightedPath of this.#pathList.values()) {
       // If there is only one path available ...
       if (this.#pathList.size == 1) {
         // ... the chance to select it is 100% ...
-        weightedPath.probability = 1;
+        weightedPath.weight = 1;
         return;
       }
 
@@ -338,7 +338,7 @@ class TargetTile {
       // cos(x * 1.5) returns a value in [~0.07, 1], the long the path, the lower the probability
       // NOTE: cos(x * 1.5) is slightly greater than y = -x + 1, try hyperbola instead
       //       (like y = 0.1 / (x + 0.1)) for a more drastic drop as distance increases
-      weightedPath.probability = Math.cos(ratio * 1.5)
+      weightedPath.weight = Math.cos(ratio * 1.5)
     }
   }
 
@@ -351,33 +351,33 @@ class TargetTile {
 }
 
 class WeightedPath {
-  #probability;
+  #weight;
   #path;
 
   /**
-   * @param {number} probability 
+   * @param {number} weight 
    * @param {MapPoint[]} path 
    */
-  constructor(probability, path) {
-    this.#probability = probability;
+  constructor(weight, path) {
+    this.#weight = weight;
     this.#path = path;
   }
 
-  get probability() {
-    return this.#probability;
+  get weight() {
+    return this.#weight;
   }
 
   get path() {
     return this.#path;
   }
 
-  set probability(value) {
+  set weight(value) {
     if (value < 0) {
       value = 0;
     } else if (value > 1) {
       value = 1;
     }
 
-    this.#probability = value;
+    this.#weight = value;
   }
 }

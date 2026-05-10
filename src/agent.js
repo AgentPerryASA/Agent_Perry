@@ -107,43 +107,39 @@ export class Agent {
 
         // Constantly generate the best intention based on our sensing
         await this.#generateBestIntention();
-
       });
 
-      setInterval(async () => {
-        if (this.sensingValue == this.oldSensingValue) {
-          console.log("stop detected")
-          this.randomMove = true
-          for (const green of this.#internalBelief.tileMap.green) {
-            console.log("kjvnikfv")
-            this.#intentionList.goTo.push(new GoToIntention(green.coordinates));
-          }
-          console.log(this.#internalBelief.tileMap.green)
-          let rn = Math.floor(Math.random() * this.#intentionList.goTo.length);
-          let intention = this.#intentionList.goTo[rn]
-          await this.#pushIntention(intention)
-        } else {
-          console.log("test")
-          this.oldSensingValue = this.sensingValue;
-        }
-      }, 5000)
+      // setInterval(async () => {
+      //   if (this.sensingValue == this.oldSensingValue) {
+      //     this.randomMove = true
+      //     for (const green of this.#internalBelief.tileMap.green) {
+      //       this.#intentionList.goTo.push(new GoToIntention(green.coordinates));
+      //     }
+      //     console.log(this.#internalBelief.tileMap.green)
+      //     let rn = Math.floor(Math.random() * this.#intentionList.goTo.length);
+      //     let intention = this.#intentionList.goTo[rn]
+      //     await this.#pushIntention(intention)
+      //   } else {
+      //     console.log("test")
+      //     this.oldSensingValue = this.sensingValue;
+      //   }
+      // }, 5000)
     })
   }
 
-  #lock = false;
   async #generateBestIntention() {
-    this.sensingValue += 1
-    // if (this.#lock)
-    //   return;
-    this.#lock = true;
+    // this.sensingValue += 1
 
     this.#intentionList.clean();
 
     // Store the intention of delivering the parcels we are carrying
+    // to a red tile according to its weight
     // TODO: carriedParcelsCount does not listen to carried parcels that are expired
     if (this.#internalBelief.carriedParcelsCount >= 1) {
-      for (const red of this.#internalBelief.tileMap.red) {
-        this.#intentionList.goPutDown.push(new GoPutDownIntention(red.coordinates));
+      // TODO: take the green tile in some way, for now use the first in list
+      const red = this.#selectRandomWeightedPath();
+      if (red) {
+        this.#intentionList.goPutDown = new GoPutDownIntention(red.destinationCoordinates, red.path);
       }
     }
 
@@ -155,7 +151,7 @@ export class Agent {
 
     // Store the intentions of going to green tiles, if the are no free parcels around us
     if (this.#internalBelief.parcelList.length == 0) {
-      for (const green of this.#internalBelief.tileMap.green) {
+      for (const green of this.#internalBelief.tileMap.greenTiles) {
         this.#intentionList.goTo.push(new GoToIntention(green.coordinates));
       }
     }
@@ -171,23 +167,10 @@ export class Agent {
   #selectBestIntention() {
     let bestIntention;
 
-    // Best intention candidate: delivery parcels to the nearest red tile
-    let minDistance = Number.MAX_VALUE;
-    for (const intention of this.#intentionList.goPutDown) {
-      const distance = this.#distance(intention.deliveryCoordinates, this.#me.coordinates);
-      if (distance < minDistance) {
-        minDistance = distance;
-        bestIntention = intention;
-      }
-    }
-
-    // NOTE: priority to delivery intention
-    // TODO: go to pick up if a free parcel is along the path
-    if (bestIntention) {
-      //If bestintention is still putDown but the same is still executed, return null
-      // if (this.#currentPlan && this.#currentPlan instanceof GoPutDownPlan && this.#currentPlan.isRunning == true) {
-      //   return
-      // }
+    // Best intention candidate: delivery parcels
+    if (this.#intentionList.goPutDown) {
+      bestIntention = this.#intentionList.goPutDown;
+      // NOTE: priority to delivery intention
       return bestIntention;
     }
 
@@ -207,7 +190,7 @@ export class Agent {
             let dst = myDst - agentDst
 
             if (dst < 0) {
-              //If the difference on distances is positive, this means another agent is nearer to the packet
+              // If the difference on distances is positive, this means another agent is nearer to the packet
               highestScore = parcelScore;
               bestIntention = intention;
               this.randomMove = false
@@ -216,7 +199,7 @@ export class Agent {
         }
 
         if (this.#internalBelief.nearAgentList.length == 0) {
-          //List could be empty: the package is the best on that case
+          // List could be empty: the package is the best on that case
           highestScore = parcelScore;
           bestIntention = intention;
           this.randomMove = false;
@@ -224,12 +207,8 @@ export class Agent {
       }
     }
 
-    // if (bestIntention && this.#currentPlan && this.#currentPlan instanceof GoPickUpPlan && this.#currentPlan.isRunning == true) {
-    //   //If it was already planning of picking up, then return with null
-    //   return
-    // }
-
     // Best intention candidate: go to the nearest green tile, if we have not green tiles around us
+    let minDistance = Number.MAX_VALUE;
     if (!bestIntention) {
       if (!this.randomMove) {
         for (const intention of this.#intentionList.goTo) {
@@ -252,7 +231,6 @@ export class Agent {
   async #pushIntention(intention) {
     // Skip push if the intention remains the same
     if (this.#currentIntention && this.#currentIntention.isEqual(intention)) {
-      this.#lock = false;
       return;
     }
 
@@ -264,18 +242,11 @@ export class Agent {
   async #achieveCurrentIntention() {
     if (this.#currentIntention) {
       await this.#stopCurrentIntention();
-      console.log("Stopping ", this.#currentPlan)
-
-      // TODO: check if a new intention is selected
-      // TODO: the check if the parcel is still free is not needed, a new intention will be generated next iteration
 
       this.#currentPlan = this.selectPlan(this.#currentIntention);
       if (this.#currentPlan) {
-        console.log("exe ", this.#currentPlan)
         // @ts-ignore
         this.#currentPlan.execute(this.#currentIntention);
-
-        this.#lock = false;
       }
     }
   }
@@ -283,6 +254,24 @@ export class Agent {
   async #stopCurrentIntention() {
     if (this.#currentPlan) {
       await this.#currentPlan.stop();
+    }
+  }
+
+  #selectRandomWeightedPath() {
+    // TODO: remove
+    const green = this.#internalBelief.tileMap.greenTiles[0];
+
+    const totalWeight = [...green.pathList.values()]
+      .reduce((sum, weightedPath) => sum + weightedPath.weight, 0);
+
+    let random = Math.random() * totalWeight;
+
+    for (const [destinationCoordinates, weightedPath] of green.pathList) {
+      random -= weightedPath.weight;
+
+      if (random < 0) {
+        return { destinationCoordinates: destinationCoordinates, path: weightedPath.path };
+      }
     }
   }
 
@@ -342,13 +331,12 @@ class IntentionList {
   #goTo;
   /** @type { GoPickUpIntention[] } */
   #goPickUp;
-  /** @type { GoPutDownIntention[] } */
-  #goPutDown;
+  /** @type { GoPutDownIntention | undefined } */
+  goPutDown;
 
   constructor() {
     this.#goTo = [];
     this.#goPickUp = [];
-    this.#goPutDown = [];
   }
 
   get goTo() {
@@ -359,13 +347,9 @@ class IntentionList {
     return this.#goPickUp;
   }
 
-  get goPutDown() {
-    return this.#goPutDown;
-  }
-
   clean() {
     this.#goTo = [];
     this.#goPickUp = [];
-    this.#goPutDown = [];
+    this.goPutDown = undefined;
   }
 }

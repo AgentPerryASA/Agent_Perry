@@ -2,19 +2,27 @@
 /** @typedef IOParcel @type { import("@unitn-asa/deliveroo-js-sdk/server").IOParcel } */
 
 import { Coordinates } from "./coordinates.js";
+import { MapPoint } from "./path_finder.js";
 
 export class GoToIntention {
   #destinationCoordinates;
+  #path;
 
   /**
    * @param {Coordinates} destinationCoordinates
+   * @param {MapPoint[] | undefined} path
    */
-  constructor(destinationCoordinates) {
+  constructor(destinationCoordinates, path = undefined) {
     this.#destinationCoordinates = destinationCoordinates;
+    this.#path = path;
   }
 
   get destinationCoordinates() {
     return this.#destinationCoordinates;
+  }
+
+  get path() {
+    return this.#path;
   }
 
   /**
@@ -73,16 +81,23 @@ export class GoPickUpIntention {
 
 export class GoPutDownIntention {
   #deliveryCoordinates;
+  #path;
 
   /**
    * @param {Coordinates} deliveryCoordinates
+   * @param {MapPoint[]} path 
    */
-  constructor(deliveryCoordinates) {
+  constructor(deliveryCoordinates, path) {
     this.#deliveryCoordinates = deliveryCoordinates;
+    this.#path = path;
   }
 
   get deliveryCoordinates() {
     return this.#deliveryCoordinates;
+  }
+
+  get path() {
+    return this.#path;
   }
 
   /**
