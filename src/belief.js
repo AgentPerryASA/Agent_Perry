@@ -3,19 +3,20 @@
 /**@typedef IOConfig @type {import("@unitn-asa/deliveroo-js-sdk").IOConfig} */
 /**@typedef IOAgent @type {import("@unitn-asa/deliveroo-js-sdk").IOAgent} */
 import { Coordinates } from "./coordinates.js";
+import { MapPoint, PathFinder } from "./path_finder.js";
 
 export class WorldMap {
   /** @type { string[][] } */
   tiles;
-  /** @type { Coordinates[] } */
+  /** @type { TargetTile[] } */
   green;
-  /** @type { Coordinates[] } */
+  /** @type { TargetTile[] } */
   red;
 
   /**
    * @param {string[][]} tiles
-   * @param {Coordinates[]} green
-   * @param {Coordinates[]} red
+   * @param {TargetTile[]} green
+   * @param {TargetTile[]} red
    */
   constructor(tiles, green, red) {
     this.tiles = tiles;
@@ -199,11 +200,53 @@ export class Beliefs {
 
       if (tileType == "1") {
         // Green tiles (parcel spawn)
-        this.tileMap.green.push(coordinates);
+        this.tileMap.green.push(new TargetTile(coordinates));
       } else if (tileType == "2") {
         // Red tiles (delivery)
-        this.tileMap.red.push(coordinates);
+        this.tileMap.red.push(new TargetTile(coordinates));
       }
+    }
+
+    // Retrieve paths from greens to reds and vice versa
+    const pathFinder = new PathFinder(this.tileMap.tiles);
+    for (const green of this.tileMap.green) {
+      for (const red of this.tileMap.red) {
+        const path = pathFinder.search(green.coordinates, red.coordinates);
+        if (path.length != 0) {
+          // Check if the red tile is in a one-way area
+          const backPath = pathFinder.search(red.coordinates, green.coordinates);
+          if (backPath.length != 0) {
+            green.addPath(red.coordinates, path);
+            red.addPath(green.coordinates, backPath);
+          }
+        }
+      }
+    }
+
+    // Calculate probability of each path from greens according to the distance
+    for (let i = 0; i < this.tileMap.green.length; i++) {
+      const green = this.#tileMap.green[i];
+
+      // Remove isolated greens
+      if (green.pathList.size == 0) {
+        this.#tileMap.green.splice(i, 1);
+        continue;
+      }
+
+      green.updatePathsProbability();
+    }
+
+    // Calculate probability of each path from reds according to the distance
+    for (let i = 0; i < this.tileMap.red.length; i++) {
+      const red = this.#tileMap.red[i];
+
+      // Remove isolated reds
+      if (red.pathList.size == 0) {
+        this.#tileMap.red.splice(i, 1);
+        continue;
+      }
+
+      red.updatePathsProbability();
     }
   }
 
@@ -211,21 +254,23 @@ export class Beliefs {
    * @param {{x:number, y:number}} param0
    */
   removeTile({ x: x, y: y }) {
-    this.#tileMap.tiles[x][y] = "0";
+    console.log("Attempt to remove no needed");
 
-    let index = this.#tileMap.green.findIndex((c) =>
-      c.isEqual(new Coordinates(x, y)),
-    );
-    if (index != -1) {
-      this.#tileMap.green.splice(index, 1);
-    }
+    // this.#tileMap.tiles[x][y] = "0";
 
-    index = this.#tileMap.red.findIndex((c) =>
-      c.isEqual(new Coordinates(x, y)),
-    );
-    if (index != -1) {
-      this.#tileMap.red.splice(index, 1);
-    }
+    // let index = this.#tileMap.green.findIndex((c) =>
+    //   c.isEqual(new Coordinates(x, y)),
+    // );
+    // if (index != -1) {
+    //   this.#tileMap.green.splice(index, 1);
+    // }
+
+    // index = this.#tileMap.red.findIndex((c) =>
+    //   c.isEqual(new Coordinates(x, y)),
+    // );
+    // if (index != -1) {
+    //   this.#tileMap.red.splice(index, 1);
+    // }
   }
 
   /**@param {IOConfig} config*/
@@ -244,5 +289,95 @@ export class Beliefs {
     for (let i = 0; i < agents.length; i += 1) {
       this.#nearAgentList.push(agents[i]);
     }
+  }
+}
+
+class TargetTile {
+  #coordinates;
+  /** @type {Map<Coordinates, WeightedPath>} */
+  #pathList;
+  #totalPathsLength;
+
+  /**
+   * @param {Coordinates} coordinates 
+   */
+  constructor(coordinates) {
+    this.#coordinates = coordinates;
+    this.#pathList = new Map();
+    this.#totalPathsLength = 0;
+  }
+
+  get coordinates() {
+    return this.#coordinates;
+  }
+
+  get pathList() {
+    return this.#pathList;
+  }
+
+  /**
+   * @param {Coordinates} destinationTile
+   * @param {MapPoint[]} path 
+   */
+  addPath(destinationTile, path) {
+    this.#totalPathsLength += path.length;
+    this.#pathList.set(destinationTile, new WeightedPath(0, path));
+  }
+
+  updatePathsProbability() {
+    for (const weightedPath of this.#pathList.values()) {
+      // If there is only one path available ...
+      if (this.#pathList.size == 1) {
+        // ... the chance to select it is 100% ...
+        weightedPath.probability = 1;
+        return;
+      }
+
+      // ... otherwise normalize each path length and compute the probability
+      const ratio = weightedPath.path.length / this.#totalPathsLength;
+      // cos(x * 1.5) returns a value in [~0.07, 1], the long the path, the lower the probability
+      // NOTE: cos(x * 1.5) is slightly greater than y = -x + 1, try hyperbola instead
+      //       (like y = 0.1 / (x + 0.1)) for a more drastic drop as distance increases
+      weightedPath.probability = Math.cos(ratio * 1.5)
+    }
+  }
+
+  /**
+   * @param {TargetTile} targetTile 
+   */
+  isEqual(targetTile) {
+    return this.#coordinates.isEqual(targetTile.coordinates);
+  }
+}
+
+class WeightedPath {
+  #probability;
+  #path;
+
+  /**
+   * @param {number} probability 
+   * @param {MapPoint[]} path 
+   */
+  constructor(probability, path) {
+    this.#probability = probability;
+    this.#path = path;
+  }
+
+  get probability() {
+    return this.#probability;
+  }
+
+  get path() {
+    return this.#path;
+  }
+
+  set probability(value) {
+    if (value < 0) {
+      value = 0;
+    } else if (value > 1) {
+      value = 1;
+    }
+
+    this.#probability = value;
   }
 }

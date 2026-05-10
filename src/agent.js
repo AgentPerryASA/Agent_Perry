@@ -2,34 +2,6 @@
 /** @typedef Plan @type { import('./plan.js').Plan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
-/**
- * MAP 25c1_8
- *AN: 
- 
- In general: every time it seems stuck, executePath continuous to cycle
- 
- A high penalty is assigned every time it tries to drop a parcel. Problem is less present if no red tile is next to another red tile. I notice that it happen GoPutDownPlan appear several times in the console: when it happens executePath is "stuck" (delete comment on console.log and see)
-
- sometimes pickup is emitted when in a white cell: the agent is immediately after a green cell. Other times emitpickup is executed on a red cell. This happen if a removeTile is emitted immediately before, meaning it does not find another path to go back. Removing the check for the return seems to solve at least this issue. Example:
-
- Emitted putdown
- Stopping  GoPutDownPlan { isStopped: false }
- exe  GoPickUpIntention {}
- Go from  Coordinates { x: 18, y: 16 } to Coordinates { x: 13, y: 14 }
- Remove  Coordinates { x: 13, y: 14 } from Coordinates { x: 18, y: 16 } [] 0
- emitted pickup
- Stopping  GoPickUpPlan { isStopped: false }
- exe  GoPickUpIntention {}
- Go from  Coordinates { x: 18, y: 16 } to Coordinates { x: 15, y: 14 }
- Remove  Coordinates { x: 15, y: 14 } from Coordinates { x: 18, y: 16 } [] 0
- emitted pickup
-
- Last thing: seems like it change parcel too frequently?
-
-  Sometimes not the nearest red is chosen
-
- */
-
 import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
@@ -54,7 +26,7 @@ export class Agent {
 
   sensingValue = 0;
   oldSensingValue = 0;
-  randomMove=false
+  randomMove = false
 
   constructor() {
     this.#me = new Me('', '', 0, new Coordinates(0, 0));
@@ -126,25 +98,25 @@ export class Agent {
       this.#planLibrary.push(new GoPutDownPlan(this));
 
       // In case of no changes in the environment, so no sensing events received
-     this.#generateBestIntention();
+      this.#generateBestIntention();
 
       // Keep track of parcels around us
-        this.#socket.onSensing(async sensing => {
+      this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels)
         this.#internalBelief.updateNearAgentList(sensing.agents)
-        
-        // Constantly generate the best intention based on our sensing
-          await this.#generateBestIntention();
-          
-        });
 
-        setInterval(async ()=>{
-        if(this.sensingValue==this.oldSensingValue) {
+        // Constantly generate the best intention based on our sensing
+        await this.#generateBestIntention();
+
+      });
+
+      setInterval(async () => {
+        if (this.sensingValue == this.oldSensingValue) {
           console.log("stop detected")
           this.randomMove = true
-          for (const greenTile of this.#internalBelief.tileMap.green) {
+          for (const green of this.#internalBelief.tileMap.green) {
             console.log("kjvnikfv")
-            this.#intentionList.goTo.push(new GoToIntention(greenTile));
+            this.#intentionList.goTo.push(new GoToIntention(green.coordinates));
           }
           console.log(this.#internalBelief.tileMap.green)
           let rn = Math.floor(Math.random() * this.#intentionList.goTo.length);
@@ -152,14 +124,15 @@ export class Agent {
           await this.#pushIntention(intention)
         } else {
           console.log("test")
-          this.oldSensingValue=this.sensingValue;
+          this.oldSensingValue = this.sensingValue;
         }
-      },5000)})
+      }, 5000)
+    })
   }
 
   #lock = false;
   async #generateBestIntention() {
-    this.sensingValue+=1
+    this.sensingValue += 1
     // if (this.#lock)
     //   return;
     this.#lock = true;
@@ -169,8 +142,8 @@ export class Agent {
     // Store the intention of delivering the parcels we are carrying
     // TODO: carriedParcelsCount does not listen to carried parcels that are expired
     if (this.#internalBelief.carriedParcelsCount >= 1) {
-      for (const redTile of this.#internalBelief.tileMap.red) {
-        this.#intentionList.goPutDown.push(new GoPutDownIntention(redTile));
+      for (const red of this.#internalBelief.tileMap.red) {
+        this.#intentionList.goPutDown.push(new GoPutDownIntention(red.coordinates));
       }
     }
 
@@ -182,8 +155,8 @@ export class Agent {
 
     // Store the intentions of going to green tiles, if the are no free parcels around us
     if (this.#internalBelief.parcelList.length == 0) {
-      for (const greenTile of this.#internalBelief.tileMap.green) {
-        this.#intentionList.goTo.push(new GoToIntention(greenTile));
+      for (const green of this.#internalBelief.tileMap.green) {
+        this.#intentionList.goTo.push(new GoToIntention(green.coordinates));
       }
     }
 
@@ -237,7 +210,7 @@ export class Agent {
               //If the difference on distances is positive, this means another agent is nearer to the packet
               highestScore = parcelScore;
               bestIntention = intention;
-              this.randomMove=false
+              this.randomMove = false
             }
           }
         }
@@ -246,7 +219,7 @@ export class Agent {
           //List could be empty: the package is the best on that case
           highestScore = parcelScore;
           bestIntention = intention;
-          this.randomMove=false;
+          this.randomMove = false;
         }
       }
     }
@@ -258,7 +231,7 @@ export class Agent {
 
     // Best intention candidate: go to the nearest green tile, if we have not green tiles around us
     if (!bestIntention) {
-      if(!this.randomMove) {
+      if (!this.randomMove) {
         for (const intention of this.#intentionList.goTo) {
           const distance = this.#distance(intention.destinationCoordinates, this.#me.coordinates);
           if (distance < minDistance) {
@@ -267,7 +240,7 @@ export class Agent {
           }
         }
       }
-      
+
     }
 
     return bestIntention;
