@@ -119,10 +119,18 @@ export class GoToPlan extends PlanBase {
         if (blockPoint) {
           // Temporarily replace the position of the obstacle with a '0' tile
           path = this.#pathFinder.search(this.agent.me.coordinates, end, blockPoint);
+
+          if (this.isStopped) {
+            this.isRunning = false;
+            return false;
+          }
         }
 
-        if (path.length > 0) {
-          blockPoint = await this.#executePath(path);
+        blockPoint = await this.#executePath(path);
+
+        if (this.isStopped) {
+          this.isRunning = false;
+          return false;
         }
 
         // Repeat the loop if the plan is still running but the path is not completed (due to a block on the path)
@@ -166,6 +174,7 @@ export class GoToPlan extends PlanBase {
     // } while (blockPoint && this.isRunning);
 
     this.isRunning = false;
+    return true;
   }
 
   /**
@@ -299,7 +308,7 @@ export class GoPickUpPlan extends PlanBase {
 
     if (this.isStopped) {
       this.isRunning = false;
-      return;
+      return false;
     }
 
     const result = await this.agent.socket.emitPickup();
@@ -309,6 +318,7 @@ export class GoPickUpPlan extends PlanBase {
     }
 
     this.isRunning = false;
+    return true;
   }
 }
 
@@ -332,7 +342,7 @@ export class GoPutDownPlan extends PlanBase {
 
     if (this.isStopped) {
       this.isRunning = false;
-      return;
+      return false;
     }
 
     const result = await this.agent.socket.emitPutdown();
@@ -342,5 +352,6 @@ export class GoPutDownPlan extends PlanBase {
     }
 
     this.isRunning = false;
+    return true;
   }
 }

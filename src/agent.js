@@ -16,12 +16,12 @@ export class Agent {
   /** @type { Plan[] } */
   #planLibrary;
   #intentionList;
-  /** @type { Intention | undefined } */
-  #currentIntention;
-  /** @type {Plan | undefined} */
+  /** @type { Intention[] } */
+  #currentIntentionList;
+  /** @type { Plan | undefined } */
   #currentPlan;
 
-  /** @type {Beliefs} */
+  /** @type { Beliefs } */
   #internalBelief;
 
   sensingValue = 0;
@@ -32,6 +32,7 @@ export class Agent {
     this.#me = new Me('', '', 0, new Coordinates(0, 0));
     this.#planLibrary = [];
     this.#intentionList = new IntentionList();
+    this.#currentIntentionList = [];
     this.#internalBelief = new Beliefs();
     this.#socket = DjsConnect();
 
@@ -48,6 +49,10 @@ export class Agent {
 
   get internalBelief() {
     return this.#internalBelief;
+  }
+
+  get #currentIntention() {
+    return this.#currentIntentionList[this.#currentIntentionList.length - 1];
   }
 
   init() {
@@ -170,7 +175,6 @@ export class Agent {
     // Best intention candidate: delivery parcels
     if (this.#intentionList.goPutDown) {
       bestIntention = this.#intentionList.goPutDown;
-      // NOTE: priority to delivery intention
       return bestIntention;
     }
 
@@ -229,24 +233,29 @@ export class Agent {
    * @param {Intention} intention 
    */
   async #pushIntention(intention) {
+    // TODO: still useful?
     // Skip push if the intention remains the same
     if (this.#currentIntention && this.#currentIntention.isEqual(intention)) {
       return;
     }
 
-    this.#currentIntention = intention;
+    // TODO: CS due to concurrent pop
+    this.#currentIntentionList.push(intention);
 
     await this.#achieveCurrentIntention();
   }
 
   async #achieveCurrentIntention() {
-    if (this.#currentIntention) {
-      await this.#stopCurrentIntention();
+    await this.#stopCurrentIntention();
 
-      this.#currentPlan = this.selectPlan(this.#currentIntention);
-      if (this.#currentPlan) {
-        // @ts-ignore
-        this.#currentPlan.execute(this.#currentIntention);
+    this.#currentPlan = this.selectPlan(this.#currentIntention);
+    if (this.#currentPlan) {
+      // @ts-ignore
+      const isCompleted = await this.#currentPlan.execute(this.#currentIntention);
+
+      if (isCompleted) {
+        // TODO: CS due to concurrent push
+        this.#currentIntentionList.pop()
       }
     }
   }
