@@ -112,9 +112,9 @@ export class GoToPlan extends PlanBase {
     let path = [];
     let blockPoint;
 
-    path = this.#pathFinder.search(this.agent.me.coordinates, end);
+    path = this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end);
     
-    let ret = this.#pathFinder.search(end, this.agent.me.coordinates)
+    let ret = this.#pathFinder.search(end, this.agent.internalBelief.me.coordinates)
 
     if (ret.length == 0) {
       // One-way area detected, no outgoing path from the end point exist, so
@@ -133,7 +133,7 @@ export class GoToPlan extends PlanBase {
       // TODO: what if no paths are found?
       if (blockPoint) {
         // Temporarily replace the position of the obstacle with a '0' tile
-        path = this.#pathFinder.search(this.agent.me.coordinates, end, blockPoint);
+        path = this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end, blockPoint);
       }
 
       if (path.length > 0) {
@@ -150,7 +150,7 @@ export class GoToPlan extends PlanBase {
    * @param {MapPoint[]} path
    */
   async #executePath(path) {
-    const a = this.agent.me;
+    const a = this.agent.internalBelief.me;
     let i = 1;
 
     while (i < path.length) {

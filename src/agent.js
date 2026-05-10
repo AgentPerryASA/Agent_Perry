@@ -6,13 +6,11 @@ import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention } from "./intention.js";
-import { GoToPlan, GoPickUpPlan, GoPutDownPlan } from './plan.js';
 import { Beliefs } from "./belief.js"
 
 export class Agent {
   #socket;
   // TODO: TEO
-  #me;
   /** @type { Plan[] } */
   #planLibrary;
   #intentionList;
@@ -29,7 +27,6 @@ export class Agent {
   randomMove=false
 
   constructor() {
-    this.#me = new Me('', '', 0, new Coordinates(0, 0));
     this.#planLibrary = [];
     this.#intentionList = new IntentionList();
     this.#internalBelief = new Beliefs();
@@ -40,10 +37,6 @@ export class Agent {
 
   get socket() {
     return this.#socket;
-  }
-
-  get me() {
-    return this.#me;
   }
 
   get internalBelief() {
@@ -73,20 +66,10 @@ export class Agent {
 
     // Keep track of agent information
     promiseList.push(new Promise(resolve => {
-      this.#socket.onYou(async ({ id, name, x, y, score }) => {
-        // Skip intermediate values (0.6 or 0.4)
-        if ((x != undefined && x % 1 == 0) && (y != undefined && y % 1 == 0)) {
-          if (this.#me.id == '') {
-            this.#me = new Me(
-              id,
-              name,
-              score,
-              new Coordinates(x, y)
-            );
+      this.#socket.onYou((agent) => {
+        this.#internalBelief.updateMe(agent);
 
-            resolve(true);
-          }
-        }
+        resolve(true);
       });
     }));
 
@@ -102,8 +85,9 @@ export class Agent {
 
       // Keep track of parcels around us
         this.#socket.onSensing(async sensing => {
-        this.#internalBelief.reviseParcelList(sensing.parcels)
-        this.#internalBelief.updateNearAgentList(sensing.agents)
+        this.#internalBelief.reviseParcelList(sensing.parcels);
+        this.#internalBelief.reviseCarriedParcelList(sensing.parcels);
+        this.#internalBelief.updateNearAgentList(sensing.agents);
         
         // Constantly generate the best intention based on our sensing
           await this.#generateBestIntention();
@@ -169,7 +153,7 @@ export class Agent {
     // Best intention candidate: delivery parcels to the nearest red tile
     let minDistance = Number.MAX_VALUE;
     for (const intention of this.#intentionList.goPutDown) {
-      const distance = this.#distance(intention.deliveryCoordinates, this.#me.coordinates);
+      const distance = this.#distance(intention.deliveryCoordinates, this.internalBelief.me.coordinates);
       if (distance < minDistance) {
         minDistance = distance;
         bestIntention = intention;
@@ -198,7 +182,7 @@ export class Agent {
 
           if (x != undefined && y != undefined) {
             let agentDst = this.#distance({ x, y }, intention.parcel);
-            let myDst = this.#distance(this.#me.coordinates, intention.parcel)
+            let myDst = this.#distance(this.#internalBelief.me.coordinates, intention.parcel)
             let dst = myDst - agentDst
 
             if (dst < 0) {
@@ -228,7 +212,7 @@ export class Agent {
     if (!bestIntention) {
       if(!this.randomMove) {
         for (const intention of this.#intentionList.goTo) {
-          const distance = this.#distance(intention.destinationCoordinates, this.#me.coordinates);
+          const distance = this.#distance(intention.destinationCoordinates, this.#internalBelief.me.coordinates);
           if (distance < minDistance) {
             minDistance = distance;
             bestIntention = intention;
@@ -296,38 +280,6 @@ export class Agent {
         return plan;
       }
     }
-  }
-}
-
-export class Me {
-  #id;
-  #name;
-  #score;
-  coordinates;
-
-  /**
-   * @param {string} id 
-   * @param {string} name 
-   * @param {number} score 
-   * @param {Coordinates} coordinates 
-   */
-  constructor(id, name, score, coordinates) {
-    this.#id = id;
-    this.#name = name;
-    this.#score = score;
-    this.coordinates = coordinates;
-  }
-
-  get id() {
-    return this.#id;
-  }
-
-  get name() {
-    return this.#name;
-  }
-
-  get score() {
-    return this.#score;
   }
 }
 

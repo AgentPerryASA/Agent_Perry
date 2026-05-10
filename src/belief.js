@@ -4,6 +4,38 @@
 /**@typedef IOAgent @type {import("@unitn-asa/deliveroo-js-sdk").IOAgent} */
 import { Coordinates } from "./coordinates.js";
 
+export class Me {
+  #id;
+  #name;
+  #score;
+  coordinates;
+
+  /**
+   * @param {string} id
+   * @param {string} name
+   * @param {number} score
+   * @param {Coordinates} coordinates
+   */
+  constructor(id, name, score, coordinates) {
+    this.#id = id;
+    this.#name = name;
+    this.#score = score;
+    this.coordinates = coordinates;
+  }
+
+  get id() {
+    return this.#id;
+  }
+
+  get name() {
+    return this.#name;
+  }
+
+  get score() {
+    return this.#score;
+  }
+}
+
 export class WorldMap {
   /** @type { string[][] } */
   tiles;
@@ -49,6 +81,9 @@ export class Beliefs {
   /**@type {Parcel[]} */
   #parcelList;
 
+  /**@type {Parcel[]} */
+  #carriedParcelList;
+
   /**@type {WorldMap} */
   #tileMap;
 
@@ -64,13 +99,18 @@ export class Beliefs {
   /**@type {number}*/
   #mapTimerValue;
 
+  /**@type {Me}*/
+  #me;
+
   constructor() {
     this.#parcelList = [];
+    this.#carriedParcelList = [];
     this.#tileMap = new WorldMap([], [], []);
     this.#carriedParcelsCount = 0;
     this.#parcelMinScore = 0;
     this.#nearAgentList = [];
     this.#mapTimerValue = 0;
+    this.#me = new Me("", "", 0, new Coordinates(0, 0));
   }
 
   get tileMap() {
@@ -85,6 +125,10 @@ export class Beliefs {
     return this.#parcelList;
   }
 
+  get carriedParcelList() {
+    return this.#carriedParcelList;
+  }
+
   get parcelMinScore() {
     return this.#parcelMinScore;
   }
@@ -93,32 +137,59 @@ export class Beliefs {
     return this.#nearAgentList;
   }
 
+  get me() {
+    return this.#me;
+  }
+
   set carriedParcelsCount(n) {
     this.#carriedParcelsCount = n;
   }
 
-  /**
-   * @param {Parcel} parcel
-   * @returns {boolean}
-   */
+  clearCarriedParcelList() {
+    //Force clearing of carried parcels. In general, this is automatically performed by the revision process though
+    this.#carriedParcelList = [];
+  }
 
   /**
-   * @param {IOParcel[] | undefined} sensedParcelList
+   * @param {IOAgent} agent
    */
-  reviseParcelList(sensedParcelList) {
-    let endTime = Date.now() + 0.01 * this.#parcelList.length;
+  updateMe(agent) {
+    //No, nothing to do with despicable me
+    //Skip intermediate values (0.6 or 0.4)
+    if (
+      agent.x != undefined &&
+      agent.x % 1 == 0 &&
+      agent.y != undefined &&
+      agent.y % 1 == 0
+    ) {
+      if (this.#me.id == "") {
+        this.#me = new Me(
+          agent.id,
+          agent.name,
+          agent.score,
+          new Coordinates(agent.x, agent.y),
+        );
+      }
+    }
+  }
+
+  /**
+   * @param {IOParcel[] | undefined} sensedParcelsList
+   */
+  reviseParcelList(sensedParcelsList) {
+    const endTime = Date.now() + 0.01 * this.#parcelList.length;
 
     /**@type {Map<string,IOParcel>} */
-    let sensedParcelMap = new Map();
-    if (sensedParcelList != undefined) {
-      sensedParcelMap = new Map(
-        sensedParcelList.map((parcel) => [parcel.id, parcel]),
+    let sensedParcelsMap = new Map();
+    if (sensedParcelsList != undefined) {
+      sensedParcelsMap = new Map(
+        sensedParcelsList.map((parcel) => [parcel.id, parcel]),
       );
     }
 
     for (let i = 0; i < this.#parcelList.length; i += 1) {
       const currentParcelFromBelief = this.#parcelList[i]; //parcel from belief
-      const currentParcelFromSensedList = sensedParcelMap.get(
+      const currentParcelFromSensedList = sensedParcelsMap.get(
         currentParcelFromBelief.parcel.id,
       ); //parcel from sensed list
 
@@ -137,7 +208,7 @@ export class Beliefs {
         }
 
         // Remove the just analyzed parcel from the map so later it is possible to see what are the new parcels
-        sensedParcelMap.delete(currentParcelFromBelief.parcel.id);
+        sensedParcelsMap.delete(currentParcelFromBelief.parcel.id);
       } else {
         currentParcelFromBelief.cumulatedTime +=
           (endTime - currentParcelFromBelief.lastUpdateTimestamp) / 1000;
@@ -152,8 +223,8 @@ export class Beliefs {
 
         if (newReward < this.#parcelMinScore) {
           // If parcel is not present in the current sensed list, it can no longer be sensed: check if it is necessary to delete it
-          // (everytime it is added the delta between the last check and the latest, when this is bigger than 1 means one second passed,
-          // and we need to decrease the reward)
+          // (every time it is added the delta between the last check and the latest, when this is bigger than the mapTimerValue it means
+          //  it is necessary to decrease its reward, if under a certain delta (parcelMinScore), delete the parcel)
           this.#parcelList.splice(i);
           i -= 1;
         } else {
@@ -166,7 +237,7 @@ export class Beliefs {
       }
     }
 
-    for (const [_, parcel] of sensedParcelMap) {
+    for (const [_, parcel] of sensedParcelsMap) {
       if (
         parcel.carriedBy == undefined &&
         parcel.reward >= this.parcelMinScore
@@ -175,6 +246,51 @@ export class Beliefs {
 
         this.#parcelList.push(newParcel);
       }
+    }
+  }
+
+  /**
+   * @param {IOParcel[]} sensedParcelsList
+   */
+  reviseCarriedParcelList(sensedParcelsList) {
+    //Assume that no parcel is dropped after being picked up, therefore, it is not possible to pickup a previously picked up parcel.
+    //Notice that onSensing is triggered when the agent has a parcel, even if it is not moving
+    const endTime = Date.now() + 0.01 * this.#carriedParcelList.length;
+
+    let sensedParcelsMap = new Map();
+    if (sensedParcelsList.length > 0) {
+      //Filter only parcels carried by the agent itself
+      for (let i = 0; i < sensedParcelsList.length; i += 1) {
+        const p = sensedParcelsList[i];
+        if (p.carriedBy && p.carriedBy == this.#me.id) {
+          sensedParcelsMap.set(p.id, p);
+        }
+      }
+    }
+
+    for (let i = 0; i < this.#carriedParcelList.length; i += 1) {
+      const currentParcelFromBelief = this.#carriedParcelList[i];
+      const currentParcelFromSensedList = sensedParcelsMap.get(
+        currentParcelFromBelief.parcel.id,
+      );
+      if (currentParcelFromSensedList != undefined) {
+        //If parcel was already present in list, update its information
+        currentParcelFromBelief.parcel = currentParcelFromSensedList;
+        currentParcelFromBelief.lastUpdateTimestamp = endTime;
+        currentParcelFromBelief.cumulatedTime +=
+          (endTime - currentParcelFromBelief.lastUpdateTimestamp) / 1000;
+        sensedParcelsMap.delete(currentParcelFromBelief.parcel.id);
+      } else {
+        //If parcel is not present in the sensed list, this means the agent no longer carries it, therefore, it needs to be dropped from the list
+        this.#carriedParcelList.splice(i);
+        i -= 1;
+      }
+    }
+
+    //Finally, add the new parcels that were picked up
+    for (const [_, parcel] of sensedParcelsMap) {
+      let newParcel = new Parcel(parcel, Date.now());
+      this.#carriedParcelList.push(newParcel);
     }
   }
 
