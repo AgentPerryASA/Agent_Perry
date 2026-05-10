@@ -2,34 +2,6 @@
 /** @typedef Plan @type { import('./plan.js').Plan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
-/**
- * MAP 25c1_8
- *AN: 
- 
- In general: every time it seems stuck, executePath continuous to cycle
- 
- A high penalty is assigned every time it tries to drop a parcel. Problem is less present if no red tile is next to another red tile. I notice that it happen GoPutDownPlan appear several times in the console: when it happens executePath is "stuck" (delete comment on console.log and see)
-
- sometimes pickup is emitted when in a white cell: the agent is immediately after a green cell. Other times emitpickup is executed on a red cell. This happen if a removeTile is emitted immediately before, meaning it does not find another path to go back. Removing the check for the return seems to solve at least this issue. Example:
-
- Emitted putdown
- Stopping  GoPutDownPlan { isStopped: false }
- exe  GoPickUpIntention {}
- Go from  Coordinates { x: 18, y: 16 } to Coordinates { x: 13, y: 14 }
- Remove  Coordinates { x: 13, y: 14 } from Coordinates { x: 18, y: 16 } [] 0
- emitted pickup
- Stopping  GoPickUpPlan { isStopped: false }
- exe  GoPickUpIntention {}
- Go from  Coordinates { x: 18, y: 16 } to Coordinates { x: 15, y: 14 }
- Remove  Coordinates { x: 15, y: 14 } from Coordinates { x: 18, y: 16 } [] 0
- emitted pickup
-
- Last thing: seems like it change parcel too frequently?
-
-  Sometimes not the nearest red is chosen
-
- */
-
 import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
@@ -121,9 +93,9 @@ export class Agent {
     // Wait onConfig, onMap and onYou to receive the first event before starting the logic
     // The average parcel score, the tile map and the "me" info are required for the following classes and methods
     Promise.all(promiseList).then(async () => {
-      this.#planLibrary.push(new GoToPlan(this));
-      this.#planLibrary.push(new GoPickUpPlan(this));
-      this.#planLibrary.push(new GoPutDownPlan(this));
+      //this.#planLibrary.push(new GoToPlan(this));
+      //this.#planLibrary.push(new GoPickUpPlan(this));
+      //this.#planLibrary.push(new GoPutDownPlan(this));
 
       // In case of no changes in the environment, so no sensing events received
      this.#generateBestIntention();
@@ -140,18 +112,14 @@ export class Agent {
 
         setInterval(async ()=>{
         if(this.sensingValue==this.oldSensingValue) {
-          console.log("stop detected")
           this.randomMove = true
           for (const greenTile of this.#internalBelief.tileMap.green) {
-            console.log("kjvnikfv")
             this.#intentionList.goTo.push(new GoToIntention(greenTile));
           }
-          console.log(this.#internalBelief.tileMap.green)
           let rn = Math.floor(Math.random() * this.#intentionList.goTo.length);
           let intention = this.#intentionList.goTo[rn]
           await this.#pushIntention(intention)
         } else {
-          console.log("test")
           this.oldSensingValue=this.sensingValue;
         }
       },5000)})
@@ -291,14 +259,13 @@ export class Agent {
   async #achieveCurrentIntention() {
     if (this.#currentIntention) {
       await this.#stopCurrentIntention();
-      console.log("Stopping ", this.#currentPlan)
+
 
       // TODO: check if a new intention is selected
       // TODO: the check if the parcel is still free is not needed, a new intention will be generated next iteration
 
       this.#currentPlan = this.selectPlan(this.#currentIntention);
       if (this.#currentPlan) {
-        console.log("exe ", this.#currentPlan)
         // @ts-ignore
         this.#currentPlan.execute(this.#currentIntention);
 
