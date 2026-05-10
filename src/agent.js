@@ -5,8 +5,9 @@
 import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
-import { GoPickUpIntention, GoPutDownIntention, GoToIntention } from "./intention.js";
+import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs } from "./belief.js"
+import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js"
 
 export class Agent {
   #socket;
@@ -76,9 +77,10 @@ export class Agent {
     // Wait onConfig, onMap and onYou to receive the first event before starting the logic
     // The average parcel score, the tile map and the "me" info are required for the following classes and methods
     Promise.all(promiseList).then(async () => {
-      //this.#planLibrary.push(new GoToPlan(this));
-      //this.#planLibrary.push(new GoPickUpPlan(this));
-      //this.#planLibrary.push(new GoPutDownPlan(this));
+      this.#planLibrary.push(new GoToPlan(this));
+      this.#planLibrary.push(new GoPickUpPlan(this));
+      this.#planLibrary.push(new GoPutDownPlan(this));
+      this.#planLibrary.push(new DeviateAndPickUpPlan(this));
 
       // In case of no changes in the environment, so no sensing events received
      this.#generateBestIntention();
@@ -126,10 +128,12 @@ export class Agent {
       }
     }
 
-    // Store the intentions of picking up all the free parcels around us
+    // Store the intentions of picking up all the free parcels around us. Additionally, every parcel could potentially count for a deviation
     for (const parcel of this.#internalBelief.parcelList) {
-      const intention = new GoPickUpIntention(parcel.parcel);
-      this.#intentionList.goPickUp.push(intention);
+      const pickUpintention = new GoPickUpIntention(parcel.parcel);
+      this.#intentionList.goPickUp.push(pickUpintention);
+      const deviateIntention = new DeviateAndPickUpIntention(parcel.parcel,this.#internalBelief.me.coordinates);
+      this.#intentionList.deviateAndPickUp.push(deviateIntention);
     }
 
     // Store the intentions of going to green tiles, if the are no free parcels around us
@@ -149,6 +153,14 @@ export class Agent {
 
   #selectBestIntention() {
     let bestIntention;
+
+    //First, check whether deviation are possible. Rules:
+    //check the current picked up parcel and their reward wrt the maximum value (mv) and test the one that has the smaller value.
+    //assuming speed of movement being x, this means a move every x ms can be performed, therefore, a deviation is safe if the time to get the new parcel and return
+    //to the original position allows the minimum parcel survive with reasonable time to achieve the action before the deviation. It is reasonable if the value of the new packet when I am in the previous position is higher than the carried parcel with minimum value.
+
+    
+
 
     // Best intention candidate: delivery parcels to the nearest red tile
     let minDistance = Number.MAX_VALUE;
@@ -290,11 +302,14 @@ class IntentionList {
   #goPickUp;
   /** @type { GoPutDownIntention[] } */
   #goPutDown;
+  /** @type { DeviateAndPickUpIntention[] } */
+  #deviateAndPickUp
 
   constructor() {
     this.#goTo = [];
     this.#goPickUp = [];
     this.#goPutDown = [];
+    this.#deviateAndPickUp = [];
   }
 
   get goTo() {
@@ -309,9 +324,14 @@ class IntentionList {
     return this.#goPutDown;
   }
 
+  get deviateAndPickUp() {
+    return this.#deviateAndPickUp;
+  }
+
   clean() {
     this.#goTo = [];
     this.#goPickUp = [];
     this.#goPutDown = [];
+    this.#deviateAndPickUp = [];
   }
 }

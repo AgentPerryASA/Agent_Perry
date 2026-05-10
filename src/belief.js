@@ -93,6 +93,12 @@ export class Beliefs {
   /**@type {number} */
   #parcelMinScore;
 
+  /**@type {number} */
+  #parcelMaxScore;
+
+  /**@type {number} */
+  #gameSpeed;
+
   /**@type {IOAgent[]} */
   #nearAgentList;
 
@@ -108,6 +114,8 @@ export class Beliefs {
     this.#tileMap = new WorldMap([], [], []);
     this.#carriedParcelsCount = 0;
     this.#parcelMinScore = 0;
+    this.#parcelMaxScore = 0;
+    this.#gameSpeed = 0;
     this.#nearAgentList = [];
     this.#mapTimerValue = 0;
     this.#me = new Me("", "", 0, new Coordinates(0, 0));
@@ -349,9 +357,14 @@ export class Beliefs {
   updateGameConfiguration(config) {
     const avgScore = config.GAME.parcels.reward_avg;
     this.#parcelMinScore = avgScore * 0.1;
+    this.#parcelMaxScore =
+      config.GAME.parcels.reward_avg * config.GAME.parcels.max -
+      config.GAME.parcels.max -
+      1;
     this.#mapTimerValue = Number(
       config.GAME.parcels.decaying_event.toString().split("s")[0],
     );
+    this.#gameSpeed = config.GAME.player.movement_duration;
   }
 
   /**@param {IOAgent[]} agents*/

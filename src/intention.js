@@ -101,3 +101,47 @@ export class GoPutDownIntention {
     return intention instanceof this;
   }
 }
+
+export class DeviateAndPickUpIntention {
+  #parcel;
+  #parcelCoordinates;
+  #returnCoordinates;
+
+  /**
+   * @param {IOParcel} parcel
+   * @param {Coordinates} returnCoordinates
+   */
+  constructor(parcel,returnCoordinates) {
+    this.#parcel = parcel;
+    this.#parcelCoordinates = new Coordinates(parcel.x, parcel.y);
+    this.#returnCoordinates = returnCoordinates;
+  }
+
+  get parcelCoordinates() {
+    return this.#parcelCoordinates;
+  }
+
+  get parcel() {
+    return this.#parcel;
+  }
+
+  get returnCoordinates() {
+    return this.#returnCoordinates;
+  }
+
+  /**
+   * @param {Intention} intention
+   */
+  isEqual(intention) {
+    // NOTE: parcel attribute in intention if first condition true, so safe check
+    // @ts-ignore
+    return intention instanceof this.constructor && this.#parcel.id == intention.parcel.id;
+  }
+
+  /**
+   * @param {Intention} intention 
+   */
+  static isTypeOf(intention) {
+    return intention instanceof this;
+  }
+}

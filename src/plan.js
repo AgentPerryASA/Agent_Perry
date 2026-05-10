@@ -1,4 +1,4 @@
-/** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan } */
+/** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
 import { Agent } from "./agent.js";
@@ -6,6 +6,7 @@ import {
   GoPickUpIntention,
   GoToIntention,
   GoPutDownIntention,
+  DeviateAndPickUpIntention,
 } from "./intention.js";
 import { PathFinder, MapPoint } from "./path_finder.js";
 
@@ -238,6 +239,47 @@ export class GoPickUpPlan extends PlanBase {
     if (result.length > 0) {
       this.agent.internalBelief.carriedParcelsCount += 1;
     }
+
+    this.isRunning = false;
+  }
+}
+
+export class DeviateAndPickUpPlan extends PlanBase {
+  /**
+   * @param {Intention} intention
+   */
+  isApplicable(intention) {
+    return DeviateAndPickUpIntention.isTypeOf(intention);
+  }
+
+  /**
+   * @param {DeviateAndPickUpIntention} intention
+   */
+  async execute(intention) {
+    this.isRunning = true;
+    this.isStopped = false;
+
+    let subIntention = new GoToIntention(intention.parcelCoordinates);
+    await this.achieveSubIntention(subIntention);
+
+    if (this.isStopped) {
+      this.isRunning = false;
+      return;
+    }
+
+    const result = await this.agent.socket.emitPickup();
+
+    if (result.length > 0) {
+      this.agent.internalBelief.carriedParcelsCount += 1;
+    }
+
+    if (this.isStopped) {
+      this.isRunning = false;
+      return;
+    }
+
+    subIntention = new GoToIntention(intention.returnCoordinates)
+    await this.achieveSubIntention(subIntention)
 
     this.isRunning = false;
   }
