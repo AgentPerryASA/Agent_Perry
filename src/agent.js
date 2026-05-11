@@ -13,13 +13,11 @@ export class Agent {
   #socket;
   // TODO: TEO
   #me;
-  /** @type { Plan[] } */
   #planLibrary;
   #intentionList;
-  /** @type { Intention[] } */
-  #currentIntentionList;
-  /** @type { Plan | undefined } */
-  #currentPlan;
+  // /** @type { Intention[] } */
+  /** @type { {intention: Intention, plan: Plan}[] } */
+  #intentionPlanQueue;
 
   /** @type { Beliefs } */
   #internalBelief;
@@ -30,9 +28,9 @@ export class Agent {
 
   constructor() {
     this.#me = new Me('', '', 0, new Coordinates(0, 0));
-    this.#planLibrary = [];
+    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan];
     this.#intentionList = new IntentionList();
-    this.#currentIntentionList = [];
+    this.#intentionPlanQueue = [];
     this.#internalBelief = new Beliefs();
     this.#socket = DjsConnect();
 
@@ -52,7 +50,11 @@ export class Agent {
   }
 
   get #currentIntention() {
-    return this.#currentIntentionList[this.#currentIntentionList.length - 1];
+    return this.#intentionPlanQueue[this.#intentionPlanQueue.length - 1].intention;
+  }
+
+  get #currentPlan() {
+    return this.#intentionPlanQueue[this.#intentionPlanQueue.length - 1].plan;
   }
 
   init() {
@@ -98,10 +100,6 @@ export class Agent {
     // Wait onConfig, onMap and onYou to receive the first event before starting the logic
     // The average parcel score, the tile map and the "me" info are required for the following classes and methods
     Promise.all(promiseList).then(async () => {
-      this.#planLibrary.push(new GoToPlan(this));
-      this.#planLibrary.push(new GoPickUpPlan(this));
-      this.#planLibrary.push(new GoPutDownPlan(this));
-
       // In case of no changes in the environment, so no sensing events received
       this.#generateBestIntention();
 
@@ -113,28 +111,10 @@ export class Agent {
         // Constantly generate the best intention based on our sensing
         await this.#generateBestIntention();
       });
-
-      // setInterval(async () => {
-      //   if (this.sensingValue == this.oldSensingValue) {
-      //     this.randomMove = true
-      //     for (const green of this.#internalBelief.tileMap.green) {
-      //       this.#intentionList.goTo.push(new GoToIntention(green.coordinates));
-      //     }
-      //     console.log(this.#internalBelief.tileMap.green)
-      //     let rn = Math.floor(Math.random() * this.#intentionList.goTo.length);
-      //     let intention = this.#intentionList.goTo[rn]
-      //     await this.#pushIntention(intention)
-      //   } else {
-      //     console.log("test")
-      //     this.oldSensingValue = this.sensingValue;
-      //   }
-      // }, 5000)
     })
   }
 
   async #generateBestIntention() {
-    // this.sensingValue += 1
-
     this.#intentionList.clean();
 
     // Store the intention of delivering the parcels we are carrying
@@ -233,29 +213,36 @@ export class Agent {
    * @param {Intention} intention 
    */
   async #pushIntention(intention) {
-    // TODO: still useful?
-    // Skip push if the intention remains the same
-    if (this.#currentIntention && this.#currentIntention.isEqual(intention)) {
+    // Skip push if the intention is already in the queue
+    for (const intentionPlan of this.#intentionPlanQueue) {
+      if (intentionPlan.intention.isEqual(intention)) {
+        return;
+      }
+    }
+
+    const plan = this.selectPlan(intention);
+    // Skip push if no plan can satisfy the intention
+    if (!plan) {
       return;
     }
 
-    // TODO: CS due to concurrent pop
-    this.#currentIntentionList.push(intention);
+    // Stop the current intention before pushing the new one
+    await this.#stopCurrentIntention();
+
+    this.#intentionPlanQueue.push({ intention: intention, plan: plan });
 
     await this.#achieveCurrentIntention();
   }
 
   async #achieveCurrentIntention() {
-    await this.#stopCurrentIntention();
+    // @ts-ignore
+    const isCompleted = await this.#currentPlan.execute(this.#currentIntention);
 
-    this.#currentPlan = this.selectPlan(this.#currentIntention);
-    if (this.#currentPlan) {
-      // @ts-ignore
-      const isCompleted = await this.#currentPlan.execute(this.#currentIntention);
+    if (isCompleted) {
+      this.#intentionPlanQueue.pop()
 
-      if (isCompleted) {
-        // TODO: CS due to concurrent push
-        this.#currentIntentionList.pop()
+      if (this.#currentIntention) {
+        // TODO: Resume
       }
     }
   }
@@ -297,7 +284,7 @@ export class Agent {
   selectPlan(intention) {
     for (const plan of this.#planLibrary) {
       if (plan.isApplicable(intention)) {
-        return plan;
+        return new plan(this);
       }
     }
   }
