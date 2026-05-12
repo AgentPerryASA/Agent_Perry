@@ -23,6 +23,28 @@ export class WorldMap {
     this.greenTiles = greenTiles;
     this.redTiles = redTiles;
   }
+
+  /**
+   * @param {TargetTile} targetTile 
+   */
+  getGreenTile(targetTile) {
+    for (const green of this.greenTiles) {
+      if (green.isEqual(targetTile)) {
+        return green;
+      }
+    }
+  }
+
+  /**
+   * @param {TargetTile} targetTile 
+   */
+  getRedTile(targetTile) {
+    for (const red of this.redTiles) {
+      if (red.isEqual(targetTile)) {
+        return red;
+      }
+    }
+  }
 }
 
 export class Parcel {
@@ -292,7 +314,7 @@ export class Beliefs {
   }
 }
 
-class TargetTile {
+export class TargetTile {
   #coordinates;
   /** @type {Map<Coordinates, WeightedPath>} */
   #pathList;

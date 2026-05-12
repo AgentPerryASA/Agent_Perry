@@ -108,32 +108,32 @@ export class GoToPlan extends PlanBase {
     this.isRunning = true;
     this.isStopped = false;
 
-    if (intention.path) {
-      let path = intention.path;
-      const end = intention.destinationCoordinates;
+    const end = intention.destinationCoordinates;
+    let path = intention.path ?
+      intention.path :
+      this.#pathFinder.search(this.agent.me.coordinates, end);
 
-      let blockPoint;
-      do {
-        if (blockPoint) {
-          // Temporarily replace the position of the obstacle with a '0' tile
-          path = this.#pathFinder.search(this.agent.me.coordinates, end, blockPoint);
-
-          if (this.isStopped) {
-            this.isRunning = false;
-            return false;
-          }
-        }
-
-        blockPoint = await this.#executePath(path);
+    let blockPoint;
+    do {
+      if (blockPoint) {
+        // Temporarily replace the position of the obstacle with a '0' tile
+        path = this.#pathFinder.search(this.agent.me.coordinates, end, blockPoint);
 
         if (this.isStopped) {
           this.isRunning = false;
           return false;
         }
+      }
 
-        // Repeat the loop if the plan is still running but the path is not completed (due to a block on the path)
-      } while (blockPoint && this.isRunning);
-    }
+      blockPoint = await this.#executePath(path);
+
+      if (this.isStopped) {
+        this.isRunning = false;
+        return false;
+      }
+
+      // Repeat the loop if the plan is still running but the path is not completed (due to a block on the path)
+    } while (blockPoint && this.isRunning);
 
     if (this.isStopped) {
       this.isRunning = false;
@@ -174,6 +174,11 @@ export class GoToPlan extends PlanBase {
         a.coordinates.x = movedHorizontally.x;
       }
 
+      if (this.isStopped) {
+        this.isRunning = false;
+        return;
+      }
+
       if (a.coordinates.y < step.y) {
         movedVertically = await this.agent.socket.emitMove("up");
       } else if (a.coordinates.y > step.y) {
@@ -193,6 +198,7 @@ export class GoToPlan extends PlanBase {
           return step;
         }
 
+        // Wait for next attempt of move, otherwise the server disconnect you
         await new Promise(res => setTimeout(res, 50));
       } else {
         // Agent moved

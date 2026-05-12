@@ -7,7 +7,7 @@ import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention } from "./intention.js";
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan } from './plan.js';
-import { Beliefs } from "./belief.js"
+import { Beliefs, TargetTile } from "./belief.js"
 
 export class Agent {
   #socket;
@@ -15,9 +15,11 @@ export class Agent {
   #me;
   #planLibrary;
   #intentionList;
-  // /** @type { Intention[] } */
   /** @type { {intention: Intention, plan: Plan}[] } */
   #intentionPlanQueue;
+  // TODO: TEO
+  /** @type { TargetTile | undefined } */
+  #currentTargetTile;
 
   /** @type { Beliefs } */
   #internalBelief;
@@ -50,11 +52,17 @@ export class Agent {
   }
 
   get #currentIntention() {
-    return this.#intentionPlanQueue[this.#intentionPlanQueue.length - 1].intention;
+    const intentionPlan = this.#intentionPlanQueue[this.#intentionPlanQueue.length - 1];
+    if (intentionPlan) {
+      return intentionPlan.intention;
+    }
   }
 
   get #currentPlan() {
-    return this.#intentionPlanQueue[this.#intentionPlanQueue.length - 1].plan;
+    const intentionPlan = this.#intentionPlanQueue[this.#intentionPlanQueue.length - 1];
+    if (intentionPlan) {
+      return intentionPlan.plan;
+    }
   }
 
   init() {
@@ -230,6 +238,7 @@ export class Agent {
     await this.#stopCurrentIntention();
 
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
+    this.#assignCurrentTargetTile(intention);
 
     await this.#achieveCurrentIntention();
   }
@@ -253,16 +262,36 @@ export class Agent {
     }
   }
 
-  #selectRandomWeightedPath() {
-    // TODO: remove
-    const green = this.#internalBelief.tileMap.greenTiles[0];
+  /**
+   * @param {Intention} intention 
+   */
+  #assignCurrentTargetTile(intention) {
+    if (GoPickUpIntention.isTypeOf(intention)) {
+      const greenTile = this.#internalBelief.tileMap.getGreenTile(new TargetTile(intention.parcelCoordinates));
+      if (greenTile) {
+        this.#currentTargetTile = greenTile;
+      }
+    }
 
-    const totalWeight = [...green.pathList.values()]
+    if (GoPutDownIntention.isTypeOf(intention)) {
+      const redTile = this.#internalBelief.tileMap.getRedTile(new TargetTile(intention.deliveryCoordinates));
+      if (redTile) {
+        this.#currentTargetTile = redTile;
+      }
+    }
+  }
+
+  #selectRandomWeightedPath() {
+    if (!this.#currentTargetTile) {
+      return;
+    }
+
+    const totalWeight = [...this.#currentTargetTile.pathList.values()]
       .reduce((sum, weightedPath) => sum + weightedPath.weight, 0);
 
     let random = Math.random() * totalWeight;
 
-    for (const [destinationCoordinates, weightedPath] of green.pathList) {
+    for (const [destinationCoordinates, weightedPath] of this.#currentTargetTile.pathList) {
       random -= weightedPath.weight;
 
       if (random < 0) {
