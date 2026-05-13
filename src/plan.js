@@ -164,6 +164,8 @@ export class GoToPlan extends PlanBase {
       let movedHorizontally;
       let movedVertically;
 
+      console.log("next step: ", step.x, step.y)
+
       if (a.coordinates.x < step.x) {
         movedHorizontally = await this.agent.socket.emitMove("right");
       } else if (a.coordinates.x > step.x) {

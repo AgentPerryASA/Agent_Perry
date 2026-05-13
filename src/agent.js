@@ -8,6 +8,7 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention } from "./intention.js";
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan } from './plan.js';
 import { Beliefs, TargetTile } from "./belief.js"
+import { PathFinder } from './path_finder.js';
 
 export class Agent {
   #socket;
@@ -108,17 +109,16 @@ export class Agent {
     // Wait onConfig, onMap and onYou to receive the first event before starting the logic
     // The average parcel score, the tile map and the "me" info are required for the following classes and methods
     Promise.all(promiseList).then(async () => {
-      // In case of no changes in the environment, so no sensing events received
-      this.#generateBestIntention();
-
       // Keep track of parcels around us
       this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels)
         this.#internalBelief.updateNearAgentList(sensing.agents)
 
         // Constantly generate the best intention based on our sensing
-        await this.#generateBestIntention();
+        // await this.#generateBestIntention();
       });
+
+      // TODO: set interval
     })
   }
 
@@ -129,10 +129,11 @@ export class Agent {
     // to a red tile according to its weight
     // TODO: carriedParcelsCount does not listen to carried parcels that are expired
     if (this.#internalBelief.carriedParcelsCount >= 1) {
-      // TODO: take the green tile in some way, for now use the first in list
-      const red = this.#selectRandomWeightedPath();
-      if (red) {
-        this.#intentionList.goPutDown = new GoPutDownIntention(red.destinationCoordinates, red.path);
+      if (this.#currentIntention && !GoPutDownIntention.isTypeOf(this.#currentIntention)) {
+        const red = this.#selectRandomWeightedPath();
+        if (red) {
+          this.#intentionList.goPutDown = new GoPutDownIntention(red.destinationCoordinates, red.path);
+        }
       }
     }
 
@@ -237,8 +238,12 @@ export class Agent {
     // Stop the current intention before pushing the new one
     await this.#stopCurrentIntention();
 
+    console.log("new intetion: ", intention)
+    if (GoPutDownIntention.isTypeOf(intention)) {
+      console.log("destination: ", intention.deliveryCoordinates)
+    }
+
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
-    this.#assignCurrentTargetTile(intention);
 
     await this.#achieveCurrentIntention();
   }
@@ -248,6 +253,10 @@ export class Agent {
     const isCompleted = await this.#currentPlan.execute(this.#currentIntention);
 
     if (isCompleted) {
+      if (this.#currentIntention) {
+        this.#assignCurrentTargetTile(this.#currentIntention);
+      }
+
       this.#intentionPlanQueue.pop()
 
       if (this.#currentIntention) {
