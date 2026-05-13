@@ -25,10 +25,6 @@ export class Agent {
   /** @type { Beliefs } */
   #internalBelief;
 
-  sensingValue = 0;
-  oldSensingValue = 0;
-  randomMove = false
-
   constructor() {
     this.#me = new Me('', '', 0, new Coordinates(0, 0));
     this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan];
@@ -118,21 +114,32 @@ export class Agent {
         // await this.#generateBestIntention();
       });
 
-      // TODO: set interval
+      setInterval(async () => {
+        await this.#generateBestIntention();
+      }, 200)
     })
   }
 
   async #generateBestIntention() {
     this.#intentionList.clean();
 
+    // As long as a GoPutDownIntention is running, no other intentions can be generated
+    if (this.#currentIntention && GoPutDownIntention.isTypeOf(this.#currentIntention)) {
+      return;
+    }
+
     // Store the intention of delivering the parcels we are carrying
     // to a red tile according to its weight
-    // TODO: carriedParcelsCount does not listen to carried parcels that are expired
     if (this.#internalBelief.carriedParcelsCount >= 1) {
-      if (this.#currentIntention && !GoPutDownIntention.isTypeOf(this.#currentIntention)) {
-        const red = this.#selectRandomWeightedPath();
-        if (red) {
-          this.#intentionList.goPutDown = new GoPutDownIntention(red.destinationCoordinates, red.path);
+      if (this.#currentTargetTile) {
+        // Check if the current target tile is a green one (we just picked up a parcel)
+        const currentGreenTile = this.#internalBelief.tileMap.getGreenTile(this.#currentTargetTile);
+        if (currentGreenTile) {
+          // Select a random path from the current green to a red
+          const red = this.#selectRandomWeightedPath();
+          if (red) {
+            this.#intentionList.goPutDown = new GoPutDownIntention(red.destinationCoordinates, red.path);
+          }
         }
       }
     }
@@ -203,16 +210,13 @@ export class Agent {
     // Best intention candidate: go to the nearest green tile, if we have not green tiles around us
     let minDistance = Number.MAX_VALUE;
     if (!bestIntention) {
-      if (!this.randomMove) {
-        for (const intention of this.#intentionList.goTo) {
-          const distance = this.#distance(intention.destinationCoordinates, this.#me.coordinates);
-          if (distance < minDistance) {
-            minDistance = distance;
-            bestIntention = intention;
-          }
+      for (const intention of this.#intentionList.goTo) {
+        const distance = this.#distance(intention.destinationCoordinates, this.#me.coordinates);
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestIntention = intention;
         }
       }
-
     }
 
     return bestIntention;
@@ -239,9 +243,8 @@ export class Agent {
     await this.#stopCurrentIntention();
 
     console.log("new intetion: ", intention)
-    if (GoPutDownIntention.isTypeOf(intention)) {
-      console.log("destination: ", intention.deliveryCoordinates)
-    }
+    if (GoToIntention.isTypeOf(intention))
+      console.log(this.#me.coordinates.toString(), " -> ", intention.destinationCoordinates.toString())
 
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
 
@@ -267,6 +270,7 @@ export class Agent {
 
   async #stopCurrentIntention() {
     if (this.#currentPlan) {
+      console.log("STOPPED ", this.#currentPlan)
       await this.#currentPlan.stop();
     }
   }
