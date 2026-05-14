@@ -81,7 +81,7 @@ class PlanBase {
 export class GoToPlan extends PlanBase {
   #pathFinder;
 
-  #MAX_MOVE_ATTEMPTS = 20
+  #MAX_MOVE_ATTEMPTS = 10
   #moveAttemptCount;
 
   /**
@@ -97,7 +97,7 @@ export class GoToPlan extends PlanBase {
   /**
    * @param {Intention} intention
    */
-  isApplicable(intention) {
+  static isApplicable(intention) {
     return GoToIntention.isTypeOf(intention);
   }
 
@@ -109,44 +109,39 @@ export class GoToPlan extends PlanBase {
     this.isStopped = false;
 
     const end = intention.destinationCoordinates;
-    let path = [];
+    let path = intention.path ?
+      intention.path :
+      this.#pathFinder.search(this.agent.me.coordinates, end);
+
     let blockPoint;
-
-    path = this.#pathFinder.search(this.agent.me.coordinates, end);
-    //AN: Sometimes it block itself because it tries to go in the same cell it currently is
-    console.log("Go from ", this.agent.me.coordinates, "to", end, "len", path.length)
-    let ret = this.#pathFinder.search(end, this.agent.me.coordinates)
-    console.log(ret, ret.length)
-    // if (ret.length == 0 && this.agent.me.coordinates.x != end.x && this.agent.me.coordinates.y != end.y) {
-    if (ret.length == 0) {
-      // One-way area detected, no outgoing path from the end point exist, so
-      // remove the end point both from the map of pathFinder and from the agent beliefs
-      this.#pathFinder.removePoint(new MapPoint({ x: end.x, y: end.y, w: '' }));
-      // TODO: TEO
-      console.log("Remove ", end, "from", this.agent.me.coordinates, ret, ret.length)
-      this.agent.internalBelief.removeTile(end);
-
-      // Immediately stop the execution
-      this.stop();
-      this.isRunning = false;
-      return;
-    }
-
     do {
-      // TODO: what if no paths are found?
       if (blockPoint) {
         // Temporarily replace the position of the obstacle with a '0' tile
         path = this.#pathFinder.search(this.agent.me.coordinates, end, blockPoint);
+
+        if (this.isStopped) {
+          this.isRunning = false;
+          return false;
+        }
       }
 
-      if (path.length > 0) {
-        blockPoint = await this.#executePath(path);
+      blockPoint = await this.#executePath(path);
+
+      if (this.isStopped) {
+        this.isRunning = false;
+        return false;
       }
 
       // Repeat the loop if the plan is still running but the path is not completed (due to a block on the path)
     } while (blockPoint && this.isRunning);
 
+    if (this.isStopped) {
+      this.isRunning = false;
+      return false;
+    }
+
     this.isRunning = false;
+    return true;
   }
 
   /**
@@ -157,26 +152,17 @@ export class GoToPlan extends PlanBase {
     let i = 1;
 
     while (i < path.length) {
+      if (this.isStopped) {
+        this.isRunning = false;
+        return;
+      }
+
       const step = path[i];
-
-      if (this.isStopped) {
-        this.isRunning = false;
-        return;
-      }
-
-      await new Promise((res) => setTimeout(res, 100));
-
-      if (this.isStopped) {
-        this.isRunning = false;
-        return;
-      }
 
       this.#moveAttemptCount++;
 
       let movedHorizontally;
       let movedVertically;
-
-      // console.log(step.x, step.y)
 
       if (a.coordinates.x < step.x) {
         movedHorizontally = await this.agent.socket.emitMove("right");
@@ -186,6 +172,11 @@ export class GoToPlan extends PlanBase {
 
       if (movedHorizontally) {
         a.coordinates.x = movedHorizontally.x;
+      }
+
+      if (this.isStopped) {
+        this.isRunning = false;
+        return;
       }
 
       if (a.coordinates.y < step.y) {
@@ -200,12 +191,15 @@ export class GoToPlan extends PlanBase {
 
       if (!movedHorizontally && !movedVertically) {
         // Agent did not move
-        console.log(movedHorizontally, movedVertically)
-        console.log("FAIL")
+        console.log("FAIL", movedHorizontally, movedVertically)
+
         if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
           // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
           return step;
         }
+
+        // Wait for next attempt of move, otherwise the server disconnect you
+        await new Promise(res => setTimeout(res, 50));
       } else {
         // Agent moved
         this.#moveAttemptCount = 0;
@@ -221,7 +215,7 @@ export class GoPickUpPlan extends PlanBase {
   /**
    * @param {Intention} intention
    */
-  isApplicable(intention) {
+  static isApplicable(intention) {
     return GoPickUpIntention.isTypeOf(intention);
   }
 
@@ -237,16 +231,22 @@ export class GoPickUpPlan extends PlanBase {
 
     if (this.isStopped) {
       this.isRunning = false;
-      return;
+      return false;
     }
 
     const result = await this.agent.socket.emitPickup();
-    console.log("emitted pickup") //AN: sometimes pickup is emitted when in a white cell
+    console.log("Emitted pickup")
     if (result.length > 0) {
       this.agent.internalBelief.carriedParcelsCount += 1;
     }
 
+    if (this.isStopped) {
+      this.isRunning = false;
+      return false;
+    }
+
     this.isRunning = false;
+    return true;
   }
 }
 
@@ -254,7 +254,7 @@ export class GoPutDownPlan extends PlanBase {
   /**
    * @param {Intention} intention
    */
-  isApplicable(intention) {
+  static isApplicable(intention) {
     return GoPutDownIntention.isTypeOf(intention);
   }
 
@@ -265,12 +265,12 @@ export class GoPutDownPlan extends PlanBase {
     this.isRunning = true;
     this.isStopped = false;
 
-    const subIntention = new GoToIntention(intention.deliveryCoordinates);
+    const subIntention = new GoToIntention(intention.deliveryCoordinates, intention.path);
     await this.achieveSubIntention(subIntention);
 
     if (this.isStopped) {
       this.isRunning = false;
-      return;
+      return false;
     }
 
     const result = await this.agent.socket.emitPutdown();
@@ -279,6 +279,12 @@ export class GoPutDownPlan extends PlanBase {
       this.agent.internalBelief.carriedParcelsCount = 0;
     }
 
+    if (this.isStopped) {
+      this.isRunning = false;
+      return false;
+    }
+
     this.isRunning = false;
+    return true;
   }
 }
