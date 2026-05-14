@@ -1,4 +1,4 @@
-/** @typedef Intention @type { GoToIntention | GoPickUpIntention | GoPutDownIntention } */
+/** @typedef Intention @type { GoToIntention | GoPickUpIntention | GoPutDownIntention | DeviateAndPickUpIntention } */
 /** @typedef IOParcel @type { import("@unitn-asa/deliveroo-js-sdk/server").IOParcel } */
 
 import { Coordinates } from "./coordinates.js";

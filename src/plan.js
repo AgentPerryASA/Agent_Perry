@@ -2,6 +2,7 @@
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
 import { Agent } from "./agent.js";
+import { Coordinates } from "./coordinates.js";
 import {
   GoPickUpIntention,
   GoToIntention,
@@ -58,7 +59,6 @@ class PlanBase {
         this.#isRunning = false;
         return;
       }
-
       // @ts-ignore
       await this.#subPlan.execute(intention);
     }
@@ -154,6 +154,9 @@ export class GoToPlan extends PlanBase {
     let i = 1;
 
     while (i < path.length) {
+      /*await new Promise((res)=>{
+        setTimeout(()=>{res(true)},100)
+      })*/
       if (this.isStopped) {
         this.isRunning = false;
         return;
@@ -267,29 +270,36 @@ export class DeviateAndPickUpPlan extends PlanBase {
     this.isRunning = true;
     this.isStopped = false;
 
+    //For some reason the coordinates of the intention get overwritten. Until the problem is found this fix the issue
+    const returnC = new Coordinates(intention.returnCoordinates.x,intention.returnCoordinates.y)
+
     let subIntention = new GoToIntention(intention.parcelCoordinates);
     await this.achieveSubIntention(subIntention);
 
     if (this.isStopped) {
       this.isRunning = false;
-      return;
+      return false;
     }
 
     const result = await this.agent.socket.emitPickup();
-
+    console.log("2 ",intention.parcel, intention.returnCoordinates)
     if (result.length > 0) {
       this.agent.internalBelief.carriedParcelsCount += 1;
     }
 
     if (this.isStopped) {
       this.isRunning = false;
-      return;
+      return false;
     }
 
-    subIntention = new GoToIntention(intention.returnCoordinates)
+    console.log("Going back to ",returnC,"from",intention.parcelCoordinates)
+    subIntention = new GoToIntention(returnC)
     await this.achieveSubIntention(subIntention)
 
+    console.log("end")
+
     this.isRunning = false;
+    return true;
   }
 }
 
@@ -319,6 +329,7 @@ export class GoPutDownPlan extends PlanBase {
     const result = await this.agent.socket.emitPutdown();
 
     if (result.length > 0) {
+      this.agent.internalBelief.deviateAndPickupIntentionCounter=0;
       this.agent.internalBelief.carriedParcelsCount = 0;
     }
 

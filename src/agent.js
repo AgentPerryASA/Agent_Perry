@@ -132,10 +132,11 @@ export class Agent {
       }
     }
 
-    // Store the intentions of picking up all the free parcels around us. Additionally, every parcel could potentially count for a deviation
+    // Store the intentions of picking up all the free parcels around us. Additionally, every parcel could potentially count for a deviation if a goPickUp is present in the pushed intention
     for (const parcel of this.#internalBelief.parcelList) {
       const pickUpintention = new GoPickUpIntention(parcel.parcel);
       this.#intentionList.goPickUp.push(pickUpintention);
+
       const deviateIntention = new DeviateAndPickUpIntention(parcel.parcel,this.#internalBelief.me.coordinates);
       this.#intentionList.deviateAndPickUp.push(deviateIntention);
     }
@@ -163,7 +164,39 @@ export class Agent {
     //assuming speed of movement being x, this means a move every x ms can be performed, therefore, a deviation is safe if the time to get the new parcel and return
     //to the original position allows the minimum parcel survive with reasonable time to achieve the action before the deviation. It is reasonable if the value of the new packet when I am in the previous position is higher than the carried parcel with minimum value.
 
-    
+    //Find if a goPickUp was already choosen
+    let goPickUpIntentionParcel = undefined
+    for(const i of this.#intentionPlanQueue) {
+      if(GoPickUpIntention.isTypeOf(i.intention)) {
+        goPickUpIntentionParcel = i.intention.parcel
+        break;
+      }
+    }
+
+    if(goPickUpIntentionParcel && this.#internalBelief.deviateAndPickupIntentionCounter<3){
+      const minParcel = this.#internalBelief.getMinValuableParcel();
+      const gameSpeed = this.#internalBelief.gameSpeed
+      const parcelDecayTime = this.#internalBelief.parcelDecayTimerValue*1000
+      for(let i=0;i<this.#intentionList.deviateAndPickUp.length;i+=1) {
+        const dpi = this.#intentionList.deviateAndPickUp[i]
+        
+        const lostReward = Math.floor((this.#distance(this.#internalBelief.me.coordinates,dpi.parcelCoordinates)*gameSpeed*2)/parcelDecayTime);
+
+        const futureValueNewParcel = dpi.parcel.reward-lostReward;
+
+        const futureValueCarriedParcel = minParcel?minParcel.reward-lostReward:Number.MIN_VALUE;
+
+        if(futureValueNewParcel>futureValueCarriedParcel && dpi.parcel.id!=goPickUpIntentionParcel.id) {
+          this.#internalBelief.deviateAndPickupIntentionCounter+=1;
+          return dpi;
+        }
+
+      } 
+    }
+
+    if(goPickUpIntentionParcel) {
+      return
+    }
 
 
     // Best intention candidate: delivery parcels
@@ -177,31 +210,9 @@ export class Agent {
     for (const intention of this.#intentionList.goPickUp) {
       const parcelScore = intention.parcel.reward;
       if (parcelScore > highestScore && parcelScore >= this.#internalBelief.parcelMinScore) {
-        for (let i = 0; i < this.#internalBelief.nearAgentList.length; i++) {
-          let currentCheckedAgent = this.#internalBelief.nearAgentList[i]
-          const x = currentCheckedAgent.x;
-          const y = currentCheckedAgent.y;
-
-          if (x != undefined && y != undefined) {
-            let agentDst = this.#distance({ x, y }, intention.parcel);
-            let myDst = this.#distance(this.#internalBelief.me.coordinates, intention.parcel)
-            let dst = myDst - agentDst
-
-            if (dst < 0) {
-              // If the difference on distances is positive, this means another agent is nearer to the packet
-              highestScore = parcelScore;
-              bestIntention = intention;
-              this.randomMove = false
-            }
-          }
-        }
-
-        if (this.#internalBelief.nearAgentList.length == 0) {
-          // List could be empty: the package is the best on that case
-          highestScore = parcelScore;
-          bestIntention = intention;
-          this.randomMove = false;
-        }
+        highestScore = parcelScore;
+        bestIntention = intention;
+        this.randomMove = false
       }
     }
 
@@ -243,7 +254,10 @@ export class Agent {
     // Stop the current intention before pushing the new one
     await this.#stopCurrentIntention();
 
-    console.log("new intetion: ", intention)
+    console.log("new intention: ", intention)
+    if(DeviateAndPickUpIntention.isTypeOf(intention)) {
+      console.log("--from ", intention.returnCoordinates, "to ", intention.parcelCoordinates)
+    }
     if (GoToIntention.isTypeOf(intention))
       console.log(this.#internalBelief.me.coordinates.toString(), " -> ", intention.destinationCoordinates.toString())
 

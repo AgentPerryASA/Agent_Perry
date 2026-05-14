@@ -57,7 +57,7 @@ export class WorldMap {
   }
 
   /**
-   * @param {TargetTile} targetTile 
+   * @param {TargetTile} targetTile
    */
   getGreenTile(targetTile) {
     for (const green of this.greenTiles) {
@@ -68,7 +68,7 @@ export class WorldMap {
   }
 
   /**
-   * @param {TargetTile} targetTile 
+   * @param {TargetTile} targetTile
    */
   getRedTile(targetTile) {
     for (const red of this.redTiles) {
@@ -126,7 +126,10 @@ export class Beliefs {
   #nearAgentList;
 
   /**@type {number}*/
-  #mapTimerValue;
+  #parcelDecayTimerValue;
+
+  /**@type {number}*/
+  #deviateAndPickupIntentionCounter;
 
   /**@type {Me}*/
   #me;
@@ -140,7 +143,8 @@ export class Beliefs {
     this.#parcelMaxScore = 0;
     this.#gameSpeed = 0;
     this.#nearAgentList = [];
-    this.#mapTimerValue = 0;
+    this.#parcelDecayTimerValue = 0;
+    this.#deviateAndPickupIntentionCounter = 0;
     this.#me = new Me("", "", 0, new Coordinates(0, 0));
   }
 
@@ -170,6 +174,22 @@ export class Beliefs {
 
   get me() {
     return this.#me;
+  }
+
+  get gameSpeed() {
+    return this.#gameSpeed;
+  }
+
+  get parcelDecayTimerValue() {
+    return this.#parcelDecayTimerValue;
+  }
+
+  get deviateAndPickupIntentionCounter() {
+    return this.#deviateAndPickupIntentionCounter;
+  }
+
+  set deviateAndPickupIntentionCounter(n) {
+    this.#deviateAndPickupIntentionCounter = n;
   }
 
   set carriedParcelsCount(n) {
@@ -245,21 +265,24 @@ export class Beliefs {
           (endTime - currentParcelFromBelief.lastUpdateTimestamp) / 1000;
 
         const newReward =
-          currentParcelFromBelief.cumulatedTime >= this.#mapTimerValue
+          currentParcelFromBelief.cumulatedTime >= this.#parcelDecayTimerValue
             ? currentParcelFromBelief.parcel.reward -
               Math.floor(
-                currentParcelFromBelief.cumulatedTime / this.#mapTimerValue,
+                currentParcelFromBelief.cumulatedTime /
+                  this.#parcelDecayTimerValue,
               )
             : currentParcelFromBelief.parcel.reward;
 
         if (newReward < this.#parcelMinScore) {
           // If parcel is not present in the current sensed list, it can no longer be sensed: check if it is necessary to delete it
-          // (every time it is added the delta between the last check and the latest, when this is bigger than the mapTimerValue it means
+          // (every time it is added the delta between the last check and the latest, when this is bigger than the parcelDecayTimerValue it means
           //  it is necessary to decrease its reward, if under a certain delta (parcelMinScore), delete the parcel)
           this.#parcelList.splice(i);
           i -= 1;
         } else {
-          if (currentParcelFromBelief.cumulatedTime >= this.#mapTimerValue) {
+          if (
+            currentParcelFromBelief.cumulatedTime >= this.#parcelDecayTimerValue
+          ) {
             currentParcelFromBelief.parcel.reward = newReward;
             currentParcelFromBelief.cumulatedTime = 0;
           }
@@ -361,7 +384,10 @@ export class Beliefs {
         const path = pathFinder.search(green.coordinates, red.coordinates);
         if (path.length != 0) {
           // Check if the red tile is in a one-way area
-          const backPath = pathFinder.search(red.coordinates, green.coordinates);
+          const backPath = pathFinder.search(
+            red.coordinates,
+            green.coordinates,
+          );
           if (backPath.length != 0) {
             green.addPath(red.coordinates, path);
             red.addPath(green.coordinates, backPath);
@@ -428,7 +454,7 @@ export class Beliefs {
       config.GAME.parcels.reward_avg * config.GAME.parcels.max -
       config.GAME.parcels.max -
       1;
-    this.#mapTimerValue = Number(
+    this.#parcelDecayTimerValue = Number(
       config.GAME.parcels.decaying_event.toString().split("s")[0],
     );
     this.#gameSpeed = config.GAME.player.movement_duration;
@@ -444,6 +470,21 @@ export class Beliefs {
       this.#nearAgentList.push(agents[i]);
     }
   }
+
+  getMinValuableParcel() {
+    let minParcelReward = Number.MAX_VALUE;
+    let minParcel = undefined;
+
+    for (let i = 0; i < this.#carriedParcelList.length; i += 1) {
+      const p = this.#carriedParcelList[i];
+      if (p.parcel.reward < minParcelReward) {
+        minParcelReward = p.parcel.reward;
+        minParcel = p.parcel;
+      }
+    }
+
+    return minParcel;
+  }
 }
 
 export class TargetTile {
@@ -453,7 +494,7 @@ export class TargetTile {
   #totalPathsLength;
 
   /**
-   * @param {Coordinates} coordinates 
+   * @param {Coordinates} coordinates
    */
   constructor(coordinates) {
     this.#coordinates = coordinates;
@@ -471,7 +512,7 @@ export class TargetTile {
 
   /**
    * @param {Coordinates} destinationTile
-   * @param {MapPoint[]} path 
+   * @param {MapPoint[]} path
    */
   addPath(destinationTile, path) {
     this.#totalPathsLength += path.length;
@@ -492,12 +533,12 @@ export class TargetTile {
       // cos(x * 1.5) returns a value in [~0.07, 1], the long the path, the lower the probability
       // NOTE: cos(x * 1.5) is slightly greater than y = -x + 1, try hyperbola instead
       //       (like y = 0.1 / (x + 0.1)) for a more drastic drop as distance increases
-      weightedPath.weight = Math.cos(ratio * 1.5)
+      weightedPath.weight = Math.cos(ratio * 1.5);
     }
   }
 
   /**
-   * @param {TargetTile} targetTile 
+   * @param {TargetTile} targetTile
    */
   isEqual(targetTile) {
     return this.#coordinates.isEqual(targetTile.coordinates);
@@ -509,8 +550,8 @@ class WeightedPath {
   #path;
 
   /**
-   * @param {number} weight 
-   * @param {MapPoint[]} path 
+   * @param {number} weight
+   * @param {MapPoint[]} path
    */
   constructor(weight, path) {
     this.#weight = weight;
