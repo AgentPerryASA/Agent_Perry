@@ -282,7 +282,7 @@ export class DeviateAndPickUpPlan extends PlanBase {
     }
 
     const result = await this.agent.socket.emitPickup();
-    console.log("2 ",intention.parcel, intention.returnCoordinates)
+  
     if (result.length > 0) {
       this.agent.internalBelief.carriedParcelsCount += 1;
     }

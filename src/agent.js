@@ -166,10 +166,13 @@ export class Agent {
 
     //Find if a goPickUp was already choosen
     let goPickUpIntentionParcel = undefined
+    let toPickUpList = new Map()
     for(const i of this.#intentionPlanQueue) {
       if(GoPickUpIntention.isTypeOf(i.intention)) {
         goPickUpIntentionParcel = i.intention.parcel
-        break;
+        toPickUpList.set(i.intention.parcel.id,i.intention.parcel)
+      } else if(DeviateAndPickUpIntention.isTypeOf(i.intention)) {
+        toPickUpList.set(i.intention.parcel.id,i.intention.parcel)
       }
     }
 
@@ -186,8 +189,9 @@ export class Agent {
 
         const futureValueCarriedParcel = minParcel?minParcel.reward-lostReward:Number.MIN_VALUE;
 
-        if(futureValueNewParcel>futureValueCarriedParcel && dpi.parcel.id!=goPickUpIntentionParcel.id) {
+        if(futureValueNewParcel>futureValueCarriedParcel && toPickUpList.get(dpi.parcel.id)==undefined) {
           this.#internalBelief.deviateAndPickupIntentionCounter+=1;
+          console.log("test", dpi.parcel.id)
           return dpi;
         }
 
