@@ -6,30 +6,28 @@ import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
-import { Beliefs } from "./belief.js"
+import { Beliefs, TargetTile } from "./belief.js"
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js"
+import { PathFinder } from './path_finder.js';
 
 export class Agent {
   #socket;
   // TODO: TEO
-  /** @type { Plan[] } */
   #planLibrary;
   #intentionList;
-  /** @type { Intention | undefined } */
-  #currentIntention;
-  /** @type {Plan | undefined} */
-  #currentPlan;
+  /** @type { {intention: Intention, plan: Plan}[] } */
+  #intentionPlanQueue;
+  // TODO: TEO
+  /** @type { TargetTile | undefined } */
+  #currentTargetTile;
 
-  /** @type {Beliefs} */
+  /** @type { Beliefs } */
   #internalBelief;
 
-  sensingValue = 0;
-  oldSensingValue = 0;
-  randomMove=false
-
   constructor() {
-    this.#planLibrary = [];
+    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan];
     this.#intentionList = new IntentionList();
+    this.#intentionPlanQueue = [];
     this.#internalBelief = new Beliefs();
     this.#socket = DjsConnect();
 
@@ -42,6 +40,20 @@ export class Agent {
 
   get internalBelief() {
     return this.#internalBelief;
+  }
+
+  get #currentIntention() {
+    const intentionPlan = this.#intentionPlanQueue[this.#intentionPlanQueue.length - 1];
+    if (intentionPlan) {
+      return intentionPlan.intention;
+    }
+  }
+
+  get #currentPlan() {
+    const intentionPlan = this.#intentionPlanQueue[this.#intentionPlanQueue.length - 1];
+    if (intentionPlan) {
+      return intentionPlan.plan;
+    }
   }
 
   init() {
@@ -77,54 +89,46 @@ export class Agent {
     // Wait onConfig, onMap and onYou to receive the first event before starting the logic
     // The average parcel score, the tile map and the "me" info are required for the following classes and methods
     Promise.all(promiseList).then(async () => {
-      this.#planLibrary.push(new GoToPlan(this));
-      this.#planLibrary.push(new GoPickUpPlan(this));
-      this.#planLibrary.push(new GoPutDownPlan(this));
-      this.#planLibrary.push(new DeviateAndPickUpPlan(this));
-
-      // In case of no changes in the environment, so no sensing events received
-     this.#generateBestIntention();
 
       // Keep track of parcels around us
         this.#socket.onSensing(async sensing => {
-        this.#internalBelief.reviseParcelList(sensing.parcels);
+        this.#internalBelief.reviseParcelList(sensing.parcels)
         this.#internalBelief.reviseCarriedParcelList(sensing.parcels);
-        this.#internalBelief.updateNearAgentList(sensing.agents);
+        this.#internalBelief.updateNearAgentList(sensing.agents)
         
         // Constantly generate the best intention based on our sensing
-          await this.#generateBestIntention();
+          //await this.#generateBestIntention();
           
         });
 
-        setInterval(async ()=>{
-        if(this.sensingValue==this.oldSensingValue) {
-          this.randomMove = true
-          for (const greenTile of this.#internalBelief.tileMap.green) {
-            this.#intentionList.goTo.push(new GoToIntention(greenTile));
-          }
-          let rn = Math.floor(Math.random() * this.#intentionList.goTo.length);
-          let intention = this.#intentionList.goTo[rn]
-          await this.#pushIntention(intention)
-        } else {
-          this.oldSensingValue=this.sensingValue;
-        }
-      },5000)})
-  }
+        setInterval(async () => {
+        await this.#generateBestIntention();
+      }, 200)
+  })
 
-  #lock = false;
+}
+
   async #generateBestIntention() {
-    this.sensingValue+=1
-    // if (this.#lock)
-    //   return;
-    this.#lock = true;
-
     this.#intentionList.clean();
 
+    // As long as a GoPutDownIntention is running, no other intentions can be generated
+    if (this.#currentIntention && GoPutDownIntention.isTypeOf(this.#currentIntention)) {
+      return;
+    }
+
     // Store the intention of delivering the parcels we are carrying
-    // TODO: carriedParcelsCount does not listen to carried parcels that are expired
+    // to a red tile according to its weight
     if (this.#internalBelief.carriedParcelsCount >= 1) {
-      for (const redTile of this.#internalBelief.tileMap.red) {
-        this.#intentionList.goPutDown.push(new GoPutDownIntention(redTile));
+      if (this.#currentTargetTile) {
+        // Check if the current target tile is a green one (we just picked up a parcel)
+        const currentGreenTile = this.#internalBelief.tileMap.getGreenTile(this.#currentTargetTile);
+        if (currentGreenTile) {
+          // Select a random path from the current green to a red
+          const red = this.#selectRandomWeightedPath();
+          if (red) {
+            this.#intentionList.goPutDown = new GoPutDownIntention(red.destinationCoordinates, red.path);
+          }
+        }
       }
     }
 
@@ -138,8 +142,8 @@ export class Agent {
 
     // Store the intentions of going to green tiles, if the are no free parcels around us
     if (this.#internalBelief.parcelList.length == 0) {
-      for (const greenTile of this.#internalBelief.tileMap.green) {
-        this.#intentionList.goTo.push(new GoToIntention(greenTile));
+      for (const green of this.#internalBelief.tileMap.greenTiles) {
+        this.#intentionList.goTo.push(new GoToIntention(green.coordinates));
       }
     }
 
@@ -162,23 +166,9 @@ export class Agent {
     
 
 
-    // Best intention candidate: delivery parcels to the nearest red tile
-    let minDistance = Number.MAX_VALUE;
-    for (const intention of this.#intentionList.goPutDown) {
-      const distance = this.#distance(intention.deliveryCoordinates, this.internalBelief.me.coordinates);
-      if (distance < minDistance) {
-        minDistance = distance;
-        bestIntention = intention;
-      }
-    }
-
-    // NOTE: priority to delivery intention
-    // TODO: go to pick up if a free parcel is along the path
-    if (bestIntention) {
-      //If bestintention is still putDown but the same is still executed, return null
-      // if (this.#currentPlan && this.#currentPlan instanceof GoPutDownPlan && this.#currentPlan.isRunning == true) {
-      //   return
-      // }
+    // Best intention candidate: delivery parcels
+    if (this.#intentionList.goPutDown) {
+      bestIntention = this.#intentionList.goPutDown;
       return bestIntention;
     }
 
@@ -198,29 +188,25 @@ export class Agent {
             let dst = myDst - agentDst
 
             if (dst < 0) {
-              //If the difference on distances is positive, this means another agent is nearer to the packet
+              // If the difference on distances is positive, this means another agent is nearer to the packet
               highestScore = parcelScore;
               bestIntention = intention;
-              this.randomMove=false
+              this.randomMove = false
             }
           }
         }
 
         if (this.#internalBelief.nearAgentList.length == 0) {
-          //List could be empty: the package is the best on that case
+          // List could be empty: the package is the best on that case
           highestScore = parcelScore;
           bestIntention = intention;
-          this.randomMove=false;
+          this.randomMove = false;
         }
       }
     }
 
-    // if (bestIntention && this.#currentPlan && this.#currentPlan instanceof GoPickUpPlan && this.#currentPlan.isRunning == true) {
-    //   //If it was already planning of picking up, then return with null
-    //   return
-    // }
-
     // Best intention candidate: go to the nearest green tile, if we have not green tiles around us
+    let minDistance = Number.MAX_VALUE;
     if (!bestIntention) {
       if(!this.randomMove) {
         for (const intention of this.#intentionList.goTo) {
@@ -241,38 +227,90 @@ export class Agent {
    * @param {Intention} intention 
    */
   async #pushIntention(intention) {
-    // Skip push if the intention remains the same
-    if (this.#currentIntention && this.#currentIntention.isEqual(intention)) {
-      this.#lock = false;
+    // Skip push if the intention is already in the queue
+    for (const intentionPlan of this.#intentionPlanQueue) {
+      if (intentionPlan.intention.isEqual(intention)) {
+        return;
+      }
+    }
+
+    const plan = this.selectPlan(intention);
+    // Skip push if no plan can satisfy the intention
+    if (!plan) {
       return;
     }
 
-    this.#currentIntention = intention;
+    // Stop the current intention before pushing the new one
+    await this.#stopCurrentIntention();
+
+    console.log("new intetion: ", intention)
+    if (GoToIntention.isTypeOf(intention))
+      console.log(this.#internalBelief.me.coordinates.toString(), " -> ", intention.destinationCoordinates.toString())
+
+    this.#intentionPlanQueue.push({ intention: intention, plan: plan });
 
     await this.#achieveCurrentIntention();
   }
 
   async #achieveCurrentIntention() {
-    if (this.#currentIntention) {
-      await this.#stopCurrentIntention();
+    // @ts-ignore
+    const isCompleted = await this.#currentPlan.execute(this.#currentIntention);
 
+    if (isCompleted) {
+      if (this.#currentIntention) {
+        this.#assignCurrentTargetTile(this.#currentIntention);
+      }
 
-      // TODO: check if a new intention is selected
-      // TODO: the check if the parcel is still free is not needed, a new intention will be generated next iteration
+      this.#intentionPlanQueue.pop()
 
-      this.#currentPlan = this.selectPlan(this.#currentIntention);
-      if (this.#currentPlan) {
-        // @ts-ignore
-        this.#currentPlan.execute(this.#currentIntention);
-
-        this.#lock = false;
+      if (this.#currentIntention) {
+        // TODO: Resume
       }
     }
   }
 
   async #stopCurrentIntention() {
     if (this.#currentPlan) {
+      console.log("STOPPED ", this.#currentPlan)
       await this.#currentPlan.stop();
+    }
+  }
+
+  /**
+   * @param {Intention} intention 
+   */
+  #assignCurrentTargetTile(intention) {
+    if (GoPickUpIntention.isTypeOf(intention)) {
+      const greenTile = this.#internalBelief.tileMap.getGreenTile(new TargetTile(intention.parcelCoordinates));
+      if (greenTile) {
+        this.#currentTargetTile = greenTile;
+      }
+    }
+
+    if (GoPutDownIntention.isTypeOf(intention)) {
+      const redTile = this.#internalBelief.tileMap.getRedTile(new TargetTile(intention.deliveryCoordinates));
+      if (redTile) {
+        this.#currentTargetTile = redTile;
+      }
+    }
+  }
+
+  #selectRandomWeightedPath() {
+    if (!this.#currentTargetTile) {
+      return;
+    }
+
+    const totalWeight = [...this.#currentTargetTile.pathList.values()]
+      .reduce((sum, weightedPath) => sum + weightedPath.weight, 0);
+
+    let random = Math.random() * totalWeight;
+
+    for (const [destinationCoordinates, weightedPath] of this.#currentTargetTile.pathList) {
+      random -= weightedPath.weight;
+
+      if (random < 0) {
+        return { destinationCoordinates: destinationCoordinates, path: weightedPath.path };
+      }
     }
   }
 
@@ -289,7 +327,7 @@ export class Agent {
   selectPlan(intention) {
     for (const plan of this.#planLibrary) {
       if (plan.isApplicable(intention)) {
-        return plan;
+        return new plan(this);
       }
     }
   }
@@ -300,15 +338,15 @@ class IntentionList {
   #goTo;
   /** @type { GoPickUpIntention[] } */
   #goPickUp;
-  /** @type { GoPutDownIntention[] } */
-  #goPutDown;
+  /** @type { GoPutDownIntention | undefined } */
+  goPutDown;
+
   /** @type { DeviateAndPickUpIntention[] } */
   #deviateAndPickUp
 
   constructor() {
     this.#goTo = [];
     this.#goPickUp = [];
-    this.#goPutDown = [];
     this.#deviateAndPickUp = [];
   }
 
@@ -320,10 +358,6 @@ class IntentionList {
     return this.#goPickUp;
   }
 
-  get goPutDown() {
-    return this.#goPutDown;
-  }
-
   get deviateAndPickUp() {
     return this.#deviateAndPickUp;
   }
@@ -331,7 +365,7 @@ class IntentionList {
   clean() {
     this.#goTo = [];
     this.#goPickUp = [];
-    this.#goPutDown = [];
+    this.goPutDown = undefined;
     this.#deviateAndPickUp = [];
   }
 }
