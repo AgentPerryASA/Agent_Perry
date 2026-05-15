@@ -154,9 +154,9 @@ export class GoToPlan extends PlanBase {
     let i = 1;
 
     while (i < path.length) {
-      /*await new Promise((res)=>{
+      await new Promise((res)=>{
         setTimeout(()=>{res(true)},100)
-      })*/
+      })
       if (this.isStopped) {
         this.isRunning = false;
         return;

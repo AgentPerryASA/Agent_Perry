@@ -113,11 +113,64 @@ export class Agent {
   }
 
   #selectBestIntention() {
-    // TODO: DeviationIntention
+    //Every possible parcel count for a possible deviation
+    for (const parcel of this.#internalBelief.parcelList) {
+      const deviateIntention = new DeviateAndPickUpIntention(parcel.parcel,this.#internalBelief.me.coordinates);
+      this.#intentionList.deviateAndPickUp.push(deviateIntention);
+    }
 
-    // As long as a GoPutDownIntention is running, no other intentions can be generated
-    // (except for DeviationIntentions)
-    if (this.#currentIntention && GoPutDownIntention.isTypeOf(this.#currentIntention)) {
+    //First, check whether deviation are possible. Rules:
+    //check the current picked up parcel and their reward wrt the maximum value (mv) and test the one that has the smaller value.
+    //assuming speed of movement being x, this means a move every x ms can be performed, therefore, a deviation is safe if the time to get the new parcel and return
+    //to the original position allows the minimum parcel survive with reasonable time to achieve the action before the deviation. It is reasonable if the value of the new packet when I am in the previous position is higher than the carried parcel with minimum value.
+
+    //Find if a goPutDown was already chosen. Use the cycle to also find out the packages that are already in list to be picked up, to prevent duplicates in deviations
+    let goPutDownDecisionFound = false;
+    let toPickUpList = new Map();
+    let goPickUpDecisionFound = false; //needed later to prevent pushing two goPickUpIntention
+    for(const i of this.#intentionPlanQueue) {
+      if(GoPutDownIntention.isTypeOf(i.intention)) {
+        goPutDownDecisionFound=true;
+        continue
+      } else if(DeviateAndPickUpIntention.isTypeOf(i.intention)) {
+        toPickUpList.set(i.intention.parcel.id,i.intention.parcel);
+        continue
+      } else if(GoPickUpIntention.isTypeOf(i.intention)){
+        toPickUpList.set(i.intention.parcel.id,i.intention.parcel);
+        goPickUpDecisionFound=true;
+      }
+    }
+
+    //Add to pickUpList already carried parcels
+    for(const p of this.#internalBelief.carriedParcelList) {
+      toPickUpList.set(p.parcel.id,p.parcel);
+    }
+    
+
+    if(goPutDownDecisionFound && this.#internalBelief.deviateAndPickupIntentionCounter < 3){
+
+      const minParcel = this.#internalBelief.getMinValuableParcel();
+      const gameSpeed = this.#internalBelief.gameSpeed;
+      const parcelDecayTime = this.#internalBelief.parcelDecayTimerValue*1000;
+
+      for(let i=0; i<this.#intentionList.deviateAndPickUp.length; i+=1) {
+
+        const dpi = this.#intentionList.deviateAndPickUp[i];
+        const lostReward = Math.floor((this.#distance(this.#internalBelief.me.coordinates,dpi.parcelCoordinates)*gameSpeed*2)/parcelDecayTime);
+        const futureValueNewParcel = dpi.parcel.reward-lostReward;
+        const futureValueCarriedParcel = minParcel?minParcel.reward-lostReward:Number.MIN_VALUE;
+
+        if(futureValueNewParcel>futureValueCarriedParcel && toPickUpList.get(dpi.parcel.id)==undefined) {
+
+          this.#internalBelief.deviateAndPickupIntentionCounter+=1;
+          return dpi;
+        }
+
+      } 
+    }
+
+    //If a GoPutDown was already decided, prevent generation of further decision. In this situation, the only one allowed is a deviation
+    if (goPutDownDecisionFound || goPickUpDecisionFound) {
       return;
     }
 
@@ -135,55 +188,6 @@ export class Agent {
           }
         }
       }
-    }
-
-    //Every possible parcel count for a possible deviation
-    for (const parcel of this.#internalBelief.parcelList) {
-      const deviateIntention = new DeviateAndPickUpIntention(parcel.parcel,this.#internalBelief.me.coordinates);
-      this.#intentionList.deviateAndPickUp.push(deviateIntention);
-    }
-
-    //First, check whether deviation are possible. Rules:
-    //check the current picked up parcel and their reward wrt the maximum value (mv) and test the one that has the smaller value.
-    //assuming speed of movement being x, this means a move every x ms can be performed, therefore, a deviation is safe if the time to get the new parcel and return
-    //to the original position allows the minimum parcel survive with reasonable time to achieve the action before the deviation. It is reasonable if the value of the new packet when I am in the previous position is higher than the carried parcel with minimum value.
-
-    //Find if a goPickUp was already choosen
-    let goPickUpIntentionParcel = undefined
-    let toPickUpList = new Map()
-    for(const i of this.#intentionPlanQueue) {
-      if(GoPickUpIntention.isTypeOf(i.intention)) {
-        goPickUpIntentionParcel = i.intention.parcel
-        toPickUpList.set(i.intention.parcel.id,i.intention.parcel)
-      } else if(DeviateAndPickUpIntention.isTypeOf(i.intention)) {
-        toPickUpList.set(i.intention.parcel.id,i.intention.parcel)
-      }
-    }
-
-    if(goPickUpIntentionParcel && this.#internalBelief.deviateAndPickupIntentionCounter<0){
-      const minParcel = this.#internalBelief.getMinValuableParcel();
-      const gameSpeed = this.#internalBelief.gameSpeed
-      const parcelDecayTime = this.#internalBelief.parcelDecayTimerValue*1000
-      for(let i=0;i<this.#intentionList.deviateAndPickUp.length;i+=1) {
-        const dpi = this.#intentionList.deviateAndPickUp[i]
-        
-        const lostReward = Math.floor((this.#distance(this.#internalBelief.me.coordinates,dpi.parcelCoordinates)*gameSpeed*2)/parcelDecayTime);
-
-        const futureValueNewParcel = dpi.parcel.reward-lostReward;
-
-        const futureValueCarriedParcel = minParcel?minParcel.reward-lostReward:Number.MIN_VALUE;
-
-        if(futureValueNewParcel>futureValueCarriedParcel && toPickUpList.get(dpi.parcel.id)==undefined) {
-          this.#internalBelief.deviateAndPickupIntentionCounter+=1;
-          console.log("test", dpi.parcel.id)
-          return dpi;
-        }
-
-      } 
-    }
-
-    if(goPickUpIntentionParcel) {
-      return
     }
 
     // Check the intention of picking up the free parcel with the highest score
@@ -208,7 +212,7 @@ export class Agent {
       return;
     }
 
-    // Check the intention of going to a green tile, if there are no free parcels around us or in our memeory
+    // Check the intention of going to a green tile, if there are no free parcels around us or in our memory
     // If we just delivered a parcel, select one of the predefined paths of the red tile ...
     if (this.#currentTargetTile) {
       // Check if the current target tile is a red one (we just put down a parcel)
@@ -248,16 +252,19 @@ export class Agent {
     // Stop the current intention before pushing the new one
     await this.#stopCurrentIntention();
 
-    console.log("new intention: ", intention)
     if(DeviateAndPickUpIntention.isTypeOf(intention)) {
-      console.log("--from ", intention.returnCoordinates, "to ", intention.parcelCoordinates)
+      console.log("--from ", intention.returnCoordinates, "to ", intention.parcelCoordinates, "for", intention.parcel.id)
     }
+    if(GoPickUpIntention.isTypeOf(intention)) {
+      console.log("Go to parcel ", intention.parcel.id)
+    }
+
     if (GoToIntention.isTypeOf(intention))
       console.log(this.#internalBelief.me.coordinates.toString(), " -> ", intention.destinationCoordinates.toString())
 
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
 
-    console.log("new intetion: ", intention, this.#intentionPlanQueue.length)
+    console.log("new intention: ", intention, this.#intentionPlanQueue)
 
     await this.#achieveCurrentIntention();
   }
@@ -278,7 +285,7 @@ export class Agent {
 
       const tmp = this.#currentIntention;
       this.#intentionPlanQueue.pop()
-      console.log("Popped ", tmp)
+      console.log("Popped ", tmp, this.#intentionPlanQueue)
 
       if (this.#currentIntention) {
         // TODO: Resume
