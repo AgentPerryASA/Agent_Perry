@@ -406,7 +406,7 @@ export class Beliefs {
         continue;
       }
 
-      green.updatePathsWeight();
+      green.updatePathsWeights();
     }
 
     // Calculate probability of each path from reds according to the distance
@@ -419,7 +419,7 @@ export class Beliefs {
         continue;
       }
 
-      red.updatePathsWeight();
+      red.updatePathsWeights();
     }
   }
 
@@ -449,7 +449,8 @@ export class Beliefs {
   /**@param {IOConfig} config*/
   updateGameConfiguration(config) {
     const avgScore = config.GAME.parcels.reward_avg;
-    this.#parcelMinScore = avgScore * 0.1;
+    // TODO: TEO
+    this.#parcelMinScore = avgScore * 0.4;
     this.#parcelMaxScore =
       config.GAME.parcels.reward_avg * config.GAME.parcels.max -
       config.GAME.parcels.max -
@@ -519,7 +520,7 @@ export class TargetTile {
     this.#pathList.set(destinationTile, new WeightedPath(0, path));
   }
 
-  updatePathsWeight() {
+  updatePathsWeights() {
     for (const weightedPath of this.#pathList.values()) {
       // If there is only one path available ...
       if (this.#pathList.size == 1) {
@@ -530,7 +531,7 @@ export class TargetTile {
 
       // ... otherwise normalize each path length and compute the probability
       const ratio = weightedPath.path.length / this.#totalPathsLength;
-      // cos(x * 1.5) returns a value in [~0.07, 1], the long the path, the lower the probability
+      // cos(x * 1.5) returns a value in (~0.07, 1], the long the path, the lower the probability
       // NOTE: cos(x * 1.5) is slightly greater than y = -x + 1, try hyperbola instead
       //       (like y = 0.1 / (x + 0.1)) for a more drastic drop as distance increases
       weightedPath.weight = Math.cos(ratio * 1.5);

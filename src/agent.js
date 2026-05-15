@@ -95,29 +95,33 @@ export class Agent {
         this.#internalBelief.reviseParcelList(sensing.parcels)
         this.#internalBelief.reviseCarriedParcelList(sensing.parcels);
         this.#internalBelief.updateNearAgentList(sensing.agents)
-        
-        // Constantly generate the best intention based on our sensing
-          //await this.#generateBestIntention();
-          
-        });
+      });
 
-        setInterval(async () => {
+      // Constantly generate the best intention based on our sensing
+      setInterval(async () => {
         await this.#generateBestIntention();
-      }, 200)
-  })
-
-}
+      }, 100)
+    })
+  }
 
   async #generateBestIntention() {
-    this.#intentionList.clean();
+    const bestIntention = this.#selectBestIntention();
+
+    if (bestIntention) {
+      await this.#pushIntention(bestIntention);
+    }
+  }
+
+  #selectBestIntention() {
+    // TODO: DeviationIntention
 
     // As long as a GoPutDownIntention is running, no other intentions can be generated
+    // (except for DeviationIntentions)
     if (this.#currentIntention && GoPutDownIntention.isTypeOf(this.#currentIntention)) {
       return;
     }
 
-    // Store the intention of delivering the parcels we are carrying
-    // to a red tile according to its weight
+    // Check the intention of delivering the parcels we are carrying to a red tile according to its weight
     if (this.#internalBelief.carriedParcelsCount >= 1) {
       if (this.#currentTargetTile) {
         // Check if the current target tile is a green one (we just picked up a parcel)
@@ -126,38 +130,18 @@ export class Agent {
           // Select a random path from the current green to a red
           const red = this.#selectRandomWeightedPath();
           if (red) {
-            this.#intentionList.goPutDown = new GoPutDownIntention(red.destinationCoordinates, red.path);
+            // Return best intention
+            return new GoPutDownIntention(red.destinationCoordinates, red.path);
           }
         }
       }
     }
 
-    // Store the intentions of picking up all the free parcels around us. Additionally, every parcel could potentially count for a deviation if a goPickUp is present in the pushed intention
+    //Every possible parcel count for a possible deviation
     for (const parcel of this.#internalBelief.parcelList) {
-      const pickUpintention = new GoPickUpIntention(parcel.parcel);
-      this.#intentionList.goPickUp.push(pickUpintention);
-
       const deviateIntention = new DeviateAndPickUpIntention(parcel.parcel,this.#internalBelief.me.coordinates);
       this.#intentionList.deviateAndPickUp.push(deviateIntention);
     }
-
-    // Store the intentions of going to green tiles, if the are no free parcels around us
-    if (this.#internalBelief.parcelList.length == 0) {
-      for (const green of this.#internalBelief.tileMap.greenTiles) {
-        this.#intentionList.goTo.push(new GoToIntention(green.coordinates));
-      }
-    }
-
-    const bestIntention = this.#selectBestIntention();
-
-    // Push the best intention for revision
-    if (bestIntention) {
-      await this.#pushIntention(bestIntention);
-    }
-  }
-
-  #selectBestIntention() {
-    let bestIntention;
 
     //First, check whether deviation are possible. Rules:
     //check the current picked up parcel and their reward wrt the maximum value (mv) and test the one that has the smaller value.
@@ -176,7 +160,7 @@ export class Agent {
       }
     }
 
-    if(goPickUpIntentionParcel && this.#internalBelief.deviateAndPickupIntentionCounter<3){
+    if(goPickUpIntentionParcel && this.#internalBelief.deviateAndPickupIntentionCounter<0){
       const minParcel = this.#internalBelief.getMinValuableParcel();
       const gameSpeed = this.#internalBelief.gameSpeed
       const parcelDecayTime = this.#internalBelief.parcelDecayTimerValue*1000
@@ -202,40 +186,46 @@ export class Agent {
       return
     }
 
-
-    // Best intention candidate: delivery parcels
-    if (this.#intentionList.goPutDown) {
-      bestIntention = this.#intentionList.goPutDown;
+    // Check the intention of picking up the free parcel with the highest score
+    let bestIntention;
+    let highestScore = 0;
+    for (const parcel of this.#internalBelief.parcelList) {
+      const parcelScore = parcel.parcel.reward;
+      if (parcelScore > highestScore && parcelScore >= this.#internalBelief.parcelMinScore) {
+        highestScore = parcelScore;
+        bestIntention = new GoPickUpIntention(parcel.parcel);
+      }
+    }
+    if (bestIntention) {
+      // Return best intention
       return bestIntention;
     }
 
-    // Best intention candidate: pick up the free parcel with the highest score
-    let highestScore = 0;
-    for (const intention of this.#intentionList.goPickUp) {
-      const parcelScore = intention.parcel.reward;
-      if (parcelScore > highestScore && parcelScore >= this.#internalBelief.parcelMinScore) {
-        highestScore = parcelScore;
-        bestIntention = intention;
-        this.randomMove = false
-      }
+
+    // As long as a GoToIntention is running, because we had no free parcels around us or in our memory,
+    // do not generate other GoToIntentions
+    if (this.#currentIntention && GoToIntention.isTypeOf(this.#currentIntention)) {
+      return;
     }
 
-    // Best intention candidate: go to the nearest green tile, if we have not green tiles around us
-    let minDistance = Number.MAX_VALUE;
-    if (!bestIntention) {
-      if(!this.randomMove) {
-        for (const intention of this.#intentionList.goTo) {
-          const distance = this.#distance(intention.destinationCoordinates, this.#internalBelief.me.coordinates);
-          if (distance < minDistance) {
-            minDistance = distance;
-            bestIntention = intention;
-          }
+    // Check the intention of going to a green tile, if there are no free parcels around us or in our memeory
+    // If we just delivered a parcel, select one of the predefined paths of the red tile ...
+    if (this.#currentTargetTile) {
+      // Check if the current target tile is a red one (we just put down a parcel)
+      const currentRedTile = this.#internalBelief.tileMap.getRedTile(this.#currentTargetTile);
+      if (currentRedTile) {
+        // Select a random path from the current red to a green
+        const green = this.#selectRandomWeightedPath();
+        if (green) {
+          return new GoToIntention(green.destinationCoordinates, green.path);
         }
       }
-      
     }
-
-    return bestIntention;
+    // ... otherwise select a random green tile
+    const greenTilesCount = this.#internalBelief.tileMap.greenTiles.length;
+    const randomTileIndex = Math.floor(Math.random() * greenTilesCount);
+    const green = this.#internalBelief.tileMap.greenTiles[randomTileIndex];
+    return new GoToIntention(green.coordinates);
   }
 
   /**
@@ -267,19 +257,28 @@ export class Agent {
 
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
 
+    console.log("new intetion: ", intention, this.#intentionPlanQueue.length)
+
     await this.#achieveCurrentIntention();
   }
 
   async #achieveCurrentIntention() {
+    // NOTE: at this point, both currentIntention and currentPlan cannot be undefined
+    const oldIntention = this.#currentIntention;
     // @ts-ignore
     const isCompleted = await this.#currentPlan.execute(this.#currentIntention);
 
-    if (isCompleted) {
+    // @ts-ignore
+    // Pop current intention-plan pair if the intention is achieved or, if it was stopped,
+    // it was a GoToIntention (no need to be maintained in the queue)
+    if (isCompleted || GoToIntention.isTypeOf(oldIntention)) {
       if (this.#currentIntention) {
         this.#assignCurrentTargetTile(this.#currentIntention);
       }
 
+      const tmp = this.#currentIntention;
       this.#intentionPlanQueue.pop()
+      console.log("Popped ", tmp)
 
       if (this.#currentIntention) {
         // TODO: Resume
