@@ -150,6 +150,11 @@ export class Agent {
       }
     }
 
+    // TODO: REMOVE
+    if (this.#currentIntention && GoPickUpIntention.isTypeOf(this.#currentIntention)) {
+      return;
+    }
+
     // Check the intention of picking up the free parcel with the highest score
     let bestIntention;
     let highestScore = 0;
@@ -168,6 +173,9 @@ export class Agent {
 
     // As long as a GoToIntention is running, because we had no free parcels around us or in our memory,
     // do not generate other GoToIntentions
+    // NOTE: GoToIntention generation cannot be allowed if the current one is already a GoToIntention
+    //       because it would select a random green, and since it would be probably different from the
+    //       current destination, it would push it as "new best intention"
     if (this.#currentIntention && GoToIntention.isTypeOf(this.#currentIntention)) {
       return;
     }
@@ -235,7 +243,7 @@ export class Agent {
 
       const tmp = this.#currentIntention;
       this.#intentionPlanQueue.pop()
-      console.log("Popped ", tmp)
+      console.log("POPPED ", tmp)
 
       if (this.#currentIntention) {
         // TODO: Resume
@@ -245,8 +253,8 @@ export class Agent {
 
   async #stopCurrentIntention() {
     if (this.#currentPlan) {
-      console.log("STOPPED ", this.#currentPlan)
       await this.#currentPlan.stop();
+      console.log("STOPPED ", this.#currentPlan)
     }
   }
 

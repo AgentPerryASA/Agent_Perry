@@ -113,6 +113,8 @@ export class GoToPlan extends PlanBase {
       intention.path :
       this.#pathFinder.search(this.agent.me.coordinates, end);
 
+    console.log(this.agent.me.coordinates, " -> ", end)
+
     let blockPoint;
     do {
       if (blockPoint) {
