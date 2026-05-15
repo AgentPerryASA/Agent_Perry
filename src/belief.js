@@ -101,6 +101,9 @@ export class Parcel {
 }
 
 export class Beliefs {
+  /**@type {PathFinder | undefined}*/
+  #pathFinder;
+
   /**@type {Parcel[]} */
   #parcelList;
 
@@ -145,6 +148,7 @@ export class Beliefs {
     this.#nearAgentList = [];
     this.#parcelDecayTimerValue = 0;
     this.#deviateAndPickupIntentionCounter = 0;
+    this.#pathFinder = undefined;
     this.#me = new Me("", "", 0, new Coordinates(0, 0));
   }
 
@@ -186,6 +190,10 @@ export class Beliefs {
 
   get deviateAndPickupIntentionCounter() {
     return this.#deviateAndPickupIntentionCounter;
+  }
+
+  get pathFinder() {
+    return this.#pathFinder;
   }
 
   set deviateAndPickupIntentionCounter(n) {
@@ -378,13 +386,16 @@ export class Beliefs {
     }
 
     // Retrieve paths from greens to reds and vice versa
-    const pathFinder = new PathFinder(this.tileMap.tiles);
+    this.#pathFinder = new PathFinder(this.tileMap.tiles);
     for (const green of this.tileMap.greenTiles) {
       for (const red of this.tileMap.redTiles) {
-        const path = pathFinder.search(green.coordinates, red.coordinates);
+        const path = this.#pathFinder.search(
+          green.coordinates,
+          red.coordinates,
+        );
         if (path.length != 0) {
           // Check if the red tile is in a one-way area
-          const backPath = pathFinder.search(
+          const backPath = this.#pathFinder.search(
             red.coordinates,
             green.coordinates,
           );

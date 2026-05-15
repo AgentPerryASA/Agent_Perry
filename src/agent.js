@@ -8,7 +8,6 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs, TargetTile } from "./belief.js"
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js"
-import { PathFinder } from './path_finder.js';
 
 export class Agent {
   #socket;
@@ -156,7 +155,8 @@ export class Agent {
       for(let i=0; i<this.#intentionList.deviateAndPickUp.length; i+=1) {
 
         const dpi = this.#intentionList.deviateAndPickUp[i];
-        const lostReward = Math.floor((this.#distance(this.#internalBelief.me.coordinates,dpi.parcelCoordinates)*gameSpeed*2)/parcelDecayTime);
+        const distance = this.#internalBelief.pathFinder ? this.#internalBelief.pathFinder.search(this.#internalBelief.me.coordinates,dpi.parcelCoordinates).length : this.#distance(this.#internalBelief.me.coordinates,dpi.parcelCoordinates)
+        const lostReward = Math.floor((distance*gameSpeed*2)/parcelDecayTime);
         const futureValueNewParcel = dpi.parcel.reward-lostReward;
         const futureValueCarriedParcel = minParcel?minParcel.reward-lostReward:Number.MIN_VALUE;
 
@@ -251,20 +251,20 @@ export class Agent {
 
     // Stop the current intention before pushing the new one
     await this.#stopCurrentIntention();
+    this.#intentionPlanQueue.push({ intention: intention, plan: plan });
+
+    console.log("new intention: ", intention, this.#intentionPlanQueue)
 
     if(DeviateAndPickUpIntention.isTypeOf(intention)) {
       console.log("--from ", intention.returnCoordinates, "to ", intention.parcelCoordinates, "for", intention.parcel.id)
     }
     if(GoPickUpIntention.isTypeOf(intention)) {
-      console.log("Go to parcel ", intention.parcel.id)
+      console.log("--Go to parcel ", intention.parcel.id)
     }
 
-    if (GoToIntention.isTypeOf(intention))
-      console.log(this.#internalBelief.me.coordinates.toString(), " -> ", intention.destinationCoordinates.toString())
-
-    this.#intentionPlanQueue.push({ intention: intention, plan: plan });
-
-    console.log("new intention: ", intention, this.#intentionPlanQueue)
+    if (GoToIntention.isTypeOf(intention)) {
+      console.log("--",this.#internalBelief.me.coordinates.toString(), " -> ", intention.destinationCoordinates.toString())
+    }
 
     await this.#achieveCurrentIntention();
   }
@@ -288,13 +288,15 @@ export class Agent {
       console.log("Popped ", tmp, this.#intentionPlanQueue)
 
       if (this.#currentIntention) {
-        // TODO: Resume
+        console.log("recover")
+        // @ts-ignore
+        await this.#achieveCurrentIntention()
       }
     }
   }
 
   async #stopCurrentIntention() {
-    if (this.#currentPlan) {
+    if (this.#currentPlan && this.#currentPlan.isRunning) {
       console.log("STOPPED ", this.#currentPlan)
       await this.#currentPlan.stop();
     }
