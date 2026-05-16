@@ -2,6 +2,8 @@
 /**@typedef IOTile @type {import("@unitn-asa/deliveroo-js-sdk").IOTile} */
 /**@typedef IOConfig @type {import("@unitn-asa/deliveroo-js-sdk").IOConfig} */
 /**@typedef IOAgent @type {import("@unitn-asa/deliveroo-js-sdk").IOAgent} */
+/**@typedef IOCrate @type {import("@unitn-asa/deliveroo-js-sdk/types/IOSensing.js").IOCrate}*/
+import { Beliefset } from "@unitn-asa/pddl-client";
 import { Coordinates } from "./coordinates.js";
 import { MapPoint, PathFinder } from "./path_finder.js";
 
@@ -137,6 +139,12 @@ export class Beliefs {
   /**@type {Me}*/
   #me;
 
+  /**@type {Map<string,Coordinates>} */
+  #tileWithCrateMap;
+
+  /**@type {Beliefset} */
+  #plannerBeliefSet;
+
   constructor() {
     this.#parcelList = [];
     this.#carriedParcelList = [];
@@ -150,6 +158,8 @@ export class Beliefs {
     this.#deviateAndPickupIntentionCounter = 0;
     this.#pathFinder = undefined;
     this.#me = new Me("", "", 0, new Coordinates(0, 0));
+    this.#tileWithCrateMap = new Map();
+    this.#plannerBeliefSet = new Beliefset();
   }
 
   get tileMap() {
@@ -385,6 +395,59 @@ export class Beliefs {
       }
     }
 
+    //Prepare map for planner (cycling fixing x and obtaining y)
+    const generatedTileMap = this.tileMap.tiles;
+    for (let x = 0; x < generatedTileMap.length; x += 1) {
+      for (let y = 0; y < generatedTileMap[x].length; y += 1) {
+        if (generatedTileMap[x][y] != "0") {
+          //Check if tile is on the RIGHT of another tile
+          if (
+            x != 0 &&
+            generatedTileMap[x - 1][y] != "0" &&
+            generatedTileMap[x - 1][y] != "→"
+          ) {
+            this.#plannerBeliefSet.declare(
+              `right tile${x}_${y} tile${x - 1}_${y}`,
+            );
+          }
+          //Check if tile is on the LEFT of another tile
+          if (
+            x != generatedTileMap.length - 1 &&
+            generatedTileMap[x + 1][y] != "0" &&
+            generatedTileMap[x + 1][y] != "←"
+          ) {
+            this.#plannerBeliefSet.declare(
+              `left tile${x}_${y} tile${x + 1}_${y}`,
+            );
+          }
+          //Check if tile is UNDER another tile
+          if (
+            y != generatedTileMap[x].length - 1 &&
+            generatedTileMap[x][y + 1] != "0" &&
+            generatedTileMap[x][y + 1] != "↓"
+          ) {
+            this.#plannerBeliefSet.declare(
+              `under tile${x}_${y} tile${x}_${y + 1}`,
+            );
+          }
+          //Check if tile is OVER another tile
+          if (
+            y != 0 &&
+            generatedTileMap[x][y - 1] != "0" &&
+            generatedTileMap[x][y - 1] != "↑"
+          ) {
+            this.#plannerBeliefSet.declare(
+              `over tile${x}_${y} tile${x}_${y - 1}`,
+            );
+          }
+          //Set tile to crateTile if the tile is YELLOW (5 or 5!)
+          if (generatedTileMap[x][y] == "5" || generatedTileMap[x][y] == "5!") {
+            this.#plannerBeliefSet.declare(`crateTile tile${x}_${y}`);
+          }
+        }
+      }
+    }
+
     // Retrieve paths from greens to reds and vice versa
     this.#pathFinder = new PathFinder(this.tileMap.tiles);
     for (const green of this.tileMap.greenTiles) {
@@ -496,6 +559,59 @@ export class Beliefs {
     }
 
     return minParcel;
+  }
+
+  /**
+   * @param {IOCrate[]} crates
+   */
+  updateTileWithCrate(crates) {
+    //Clear the existing map
+    this.#tileWithCrateMap.clear();
+
+    //Recreate map
+    for (const crate of crates) {
+      this.#tileWithCrateMap.set(crate.id, new Coordinates(crate.x, crate.y));
+    }
+  }
+
+  getBeliefForPlanner() {
+    //At start, all is set with the corresponding position. notCrate and crate are added here, when map has to be returned. Same for perry position.
+
+    //Creating a copy of current belief for planner
+    const plannerBeliefs = new Beliefset();
+    for (const b of this.#plannerBeliefSet.entries) {
+      plannerBeliefs.declare(b[0]);
+    }
+
+    //Convert current crateMap to list and add crate predicates
+    const cratePositionList = [];
+    for (const [_, c] of this.#tileWithCrateMap) {
+      plannerBeliefs.declare(`crate tile${c.x}_${c.y}`);
+      cratePositionList.push(c);
+    }
+
+    //Add crate and nonCrate states to tiles
+    const generatedTileMap = this.tileMap.tiles;
+    for (let x = 0; x < generatedTileMap.length; x += 1) {
+      for (let y = 0; y < generatedTileMap[x].length; y += 1) {
+        let found = false;
+        for (let i = 0; i < cratePositionList.length; i += 1) {
+          if (cratePositionList[i].x == x && cratePositionList[i].y == y) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          plannerBeliefs.declare(`notCrate tile${x}_${y}`);
+        }
+      }
+    }
+
+    plannerBeliefs.declare(
+      `perry tile${this.#me.coordinates.x}_${this.#me.coordinates.y}`,
+    );
+
+    return plannerBeliefs;
   }
 }
 

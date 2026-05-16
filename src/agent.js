@@ -12,6 +12,7 @@ import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./p
 export class Agent {
   #socket;
   // TODO: TEO
+  /**@type {(typeof GoToPlan | typeof GoPickUpPlan | typeof GoPutDownPlan | typeof DeviateAndPickUpPlan)[]}*/
   #planLibrary;
   #intentionList;
   /** @type { {intention: Intention, plan: Plan}[] } */
@@ -93,7 +94,8 @@ export class Agent {
       this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels)
         this.#internalBelief.reviseCarriedParcelList(sensing.parcels);
-        this.#internalBelief.updateNearAgentList(sensing.agents)
+        this.#internalBelief.updateNearAgentList(sensing.agents);
+        this.#internalBelief.updateTileWithCrate(sensing.crates);
       });
 
       // Constantly generate the best intention based on our sensing
