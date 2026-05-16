@@ -5,14 +5,13 @@
 import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
-import { GoPickUpIntention, GoPutDownIntention, GoToIntention } from "./intention.js";
-import { GoToPlan, GoPickUpPlan, GoPutDownPlan } from './plan.js';
+import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs, TargetTile } from "./belief.js"
+import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js"
 
 export class Agent {
   #socket;
   // TODO: TEO
-  #me;
   #planLibrary;
   #intentionList;
   /** @type { {intention: Intention, plan: Plan}[] } */
@@ -25,8 +24,7 @@ export class Agent {
   #internalBelief;
 
   constructor() {
-    this.#me = new Me('', '', 0, new Coordinates(0, 0));
-    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan];
+    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan];
     this.#intentionList = new IntentionList();
     this.#intentionPlanQueue = [];
     this.#internalBelief = new Beliefs();
@@ -37,10 +35,6 @@ export class Agent {
 
   get socket() {
     return this.#socket;
-  }
-
-  get me() {
-    return this.#me;
   }
 
   get internalBelief() {
@@ -84,29 +78,21 @@ export class Agent {
 
     // Keep track of agent information
     promiseList.push(new Promise(resolve => {
-      this.#socket.onYou(async ({ id, name, x, y, score }) => {
-        // Skip intermediate values (0.6 or 0.4)
-        if ((x != undefined && x % 1 == 0) && (y != undefined && y % 1 == 0)) {
-          if (this.#me.id == '') {
-            this.#me = new Me(
-              id,
-              name,
-              score,
-              new Coordinates(x, y)
-            );
+      this.#socket.onYou((agent) => {
+        this.#internalBelief.updateMe(agent);
 
-            resolve(true);
-          }
-        }
+        resolve(true);
       });
     }));
 
     // Wait onConfig, onMap and onYou to receive the first event before starting the logic
     // The average parcel score, the tile map and the "me" info are required for the following classes and methods
     Promise.all(promiseList).then(async () => {
+
       // Keep track of parcels around us
       this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels)
+        this.#internalBelief.reviseCarriedParcelList(sensing.parcels);
         this.#internalBelief.updateNearAgentList(sensing.agents)
       });
 
@@ -126,11 +112,65 @@ export class Agent {
   }
 
   #selectBestIntention() {
-    // TODO: DeviationIntention
+    //Every possible parcel count for a possible deviation
+    for (const parcel of this.#internalBelief.parcelList) {
+      const deviateIntention = new DeviateAndPickUpIntention(parcel.parcel, this.#internalBelief.me.coordinates);
+      this.#intentionList.deviateAndPickUp.push(deviateIntention);
+    }
 
-    // As long as a GoPutDownIntention is running, no other intentions can be generated
-    // (except for DeviationIntentions)
-    if (this.#currentIntention && GoPutDownIntention.isTypeOf(this.#currentIntention)) {
+    //First, check whether deviation are possible. Rules:
+    //check the current picked up parcel and their reward wrt the maximum value (mv) and test the one that has the smaller value.
+    //assuming speed of movement being x, this means a move every x ms can be performed, therefore, a deviation is safe if the time to get the new parcel and return
+    //to the original position allows the minimum parcel survive with reasonable time to achieve the action before the deviation. It is reasonable if the value of the new packet when I am in the previous position is higher than the carried parcel with minimum value.
+
+    //Find if a goPutDown was already chosen. Use the cycle to also find out the packages that are already in list to be picked up, to prevent duplicates in deviations
+    let goPutDownDecisionFound = false;
+    let toPickUpList = new Map();
+    let goPickUpDecisionFound = false; //needed later to prevent pushing two goPickUpIntention
+    for (const i of this.#intentionPlanQueue) {
+      if (GoPutDownIntention.isTypeOf(i.intention)) {
+        goPutDownDecisionFound = true;
+        continue
+      } else if (DeviateAndPickUpIntention.isTypeOf(i.intention)) {
+        toPickUpList.set(i.intention.parcel.id, i.intention.parcel);
+        continue
+      } else if (GoPickUpIntention.isTypeOf(i.intention)) {
+        toPickUpList.set(i.intention.parcel.id, i.intention.parcel);
+        goPickUpDecisionFound = true;
+      }
+    }
+
+    //Add to pickUpList already carried parcels
+    for (const p of this.#internalBelief.carriedParcelList) {
+      toPickUpList.set(p.parcel.id, p.parcel);
+    }
+
+
+    if (goPutDownDecisionFound && this.#internalBelief.deviateAndPickupIntentionCounter < 3) {
+
+      const minParcel = this.#internalBelief.getMinValuableParcel();
+      const gameSpeed = this.#internalBelief.gameSpeed;
+      const parcelDecayTime = this.#internalBelief.parcelDecayTimerValue * 1000;
+
+      for (let i = 0; i < this.#intentionList.deviateAndPickUp.length; i += 1) {
+
+        const dpi = this.#intentionList.deviateAndPickUp[i];
+        const distance = this.#internalBelief.pathFinder ? this.#internalBelief.pathFinder.search(this.#internalBelief.me.coordinates, dpi.parcelCoordinates).length : this.#distance(this.#internalBelief.me.coordinates, dpi.parcelCoordinates)
+        const lostReward = Math.floor((distance * gameSpeed * 2) / parcelDecayTime);
+        const futureValueNewParcel = dpi.parcel.reward - lostReward;
+        const futureValueCarriedParcel = minParcel ? minParcel.reward - lostReward : Number.MIN_VALUE;
+
+        if (futureValueNewParcel > futureValueCarriedParcel && toPickUpList.get(dpi.parcel.id) == undefined) {
+
+          this.#internalBelief.deviateAndPickupIntentionCounter += 1;
+          return dpi;
+        }
+
+      }
+    }
+
+    //If a GoPutDown was already decided, prevent generation of further decision. In this situation, the only one allowed is a deviation
+    if (goPutDownDecisionFound || goPickUpDecisionFound) {
       return;
     }
 
@@ -180,7 +220,7 @@ export class Agent {
       return;
     }
 
-    // Check the intention of going to a green tile, if there are no free parcels around us or in our memeory
+    // Check the intention of going to a green tile, if there are no free parcels around us or in our memory
     // If we just delivered a parcel, select one of the predefined paths of the red tile ...
     if (this.#currentTargetTile) {
       // Check if the current target tile is a red one (we just put down a parcel)
@@ -219,10 +259,20 @@ export class Agent {
 
     // Stop the current intention before pushing the new one
     await this.#stopCurrentIntention();
-
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
 
-    console.log("new intetion: ", intention, this.#intentionPlanQueue.length)
+    console.log("new intention: ", intention, this.#intentionPlanQueue)
+
+    if (DeviateAndPickUpIntention.isTypeOf(intention)) {
+      console.log("--from ", intention.returnCoordinates, "to ", intention.parcelCoordinates, "for", intention.parcel.id)
+    }
+    if (GoPickUpIntention.isTypeOf(intention)) {
+      console.log("--Go to parcel ", intention.parcel.id)
+    }
+
+    if (GoToIntention.isTypeOf(intention)) {
+      console.log("--", this.#internalBelief.me.coordinates.toString(), " -> ", intention.destinationCoordinates.toString())
+    }
 
     await this.#achieveCurrentIntention();
   }
@@ -243,16 +293,18 @@ export class Agent {
 
       const tmp = this.#currentIntention;
       this.#intentionPlanQueue.pop()
-      console.log("POPPED ", tmp)
+      console.log("Popped ", tmp, this.#intentionPlanQueue)
 
       if (this.#currentIntention) {
-        // TODO: Resume
+        console.log("recover")
+        // @ts-ignore
+        await this.#achieveCurrentIntention()
       }
     }
   }
 
   async #stopCurrentIntention() {
-    if (this.#currentPlan) {
+    if (this.#currentPlan && this.#currentPlan.isRunning) {
       await this.#currentPlan.stop();
       console.log("STOPPED ", this.#currentPlan)
     }
@@ -315,38 +367,6 @@ export class Agent {
   }
 }
 
-export class Me {
-  #id;
-  #name;
-  #score;
-  coordinates;
-
-  /**
-   * @param {string} id 
-   * @param {string} name 
-   * @param {number} score 
-   * @param {Coordinates} coordinates 
-   */
-  constructor(id, name, score, coordinates) {
-    this.#id = id;
-    this.#name = name;
-    this.#score = score;
-    this.coordinates = coordinates;
-  }
-
-  get id() {
-    return this.#id;
-  }
-
-  get name() {
-    return this.#name;
-  }
-
-  get score() {
-    return this.#score;
-  }
-}
-
 class IntentionList {
   /** @type { GoToIntention[] } */
   #goTo;
@@ -355,9 +375,13 @@ class IntentionList {
   /** @type { GoPutDownIntention | undefined } */
   goPutDown;
 
+  /** @type { DeviateAndPickUpIntention[] } */
+  #deviateAndPickUp
+
   constructor() {
     this.#goTo = [];
     this.#goPickUp = [];
+    this.#deviateAndPickUp = [];
   }
 
   get goTo() {
@@ -368,9 +392,14 @@ class IntentionList {
     return this.#goPickUp;
   }
 
+  get deviateAndPickUp() {
+    return this.#deviateAndPickUp;
+  }
+
   clean() {
     this.#goTo = [];
     this.#goPickUp = [];
     this.goPutDown = undefined;
+    this.#deviateAndPickUp = [];
   }
 }
