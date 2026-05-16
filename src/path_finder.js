@@ -1,21 +1,29 @@
+import { Beliefset, onlineSolver, PddlProblem } from "@unitn-asa/pddl-client";
+import path from "path";
+import fs from "fs";
+import { Agent } from "./agent.js";
+
 export class PathFinder {
   // TODO: REMOVE
   /**
-   * @param {MapPoint[]} path 
+   * @param {MapPoint[]} path
    */
   static printPath(path) {
     for (const p of path) {
-      console.log(p.x, p.y)
+      console.log(p.x, p.y);
     }
   }
 
   #algorithm;
+  #agent;
 
   /**
    * @param {string[][]} map A column-wise matrix, so map[x][y] returns cell (x, y)
+   * @param {Agent | undefined} agent
    */
-  constructor(map) {
+  constructor(map, agent) {
     this.#algorithm = new Astar(map);
+    this.#agent = agent;
   }
 
   /**
@@ -25,6 +33,43 @@ export class PathFinder {
    */
   search(start, end, pointToIgnore = undefined) {
     return this.#algorithm.search(start, end, pointToIgnore);
+  }
+
+  /**
+   *
+   * @param {MapPoint} end
+   */
+  async searchWithPlanner(end) {
+    if (this.#agent) {
+      //Get belief already prepared for the planner
+      const bs = this.#agent.internalBelief.getBeliefForPlanner();
+
+      //Build the pddl problem and convert it to string
+      const pddlProblem = new PddlProblem(
+        `Travel to tile${end.x}_${end.y}`,
+        bs.objects.join(" "),
+        bs.toPddlString(),
+        `perry tile${end.x}_${end.y}`,
+      );
+      const problemString = pddlProblem.toPddlString();
+
+      //Recover domain file
+      const __filename = path.resolve(process.argv[1]);
+      const __dirname = path.dirname(__filename);
+
+      const filePath = path.join(__dirname, "./src/planner/domain.pddl");
+
+      const domainString = await new Promise((res, rej) => {
+        fs.readFile(filePath, "utf8", (err, data) => {
+          if (err) rej(err);
+          else res(data);
+        });
+      });
+
+      const plan = await onlineSolver(domainString, problemString);
+
+      console.log(plan);
+    }
   }
 
   /**

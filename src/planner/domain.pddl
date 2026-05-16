@@ -2,7 +2,7 @@
 ;; Since precondition cannot be negative, during generation of the problem reference to non reachable tiles must be avoided
 ;; Every tile in the problem must be described wrt their neighbors (ex. t1 is under t2 over t3 right of t4 and left of t5)
 
-(define (domain pr)
+(define (domain default)
     (:requirements :strips)
     (:predicates
         (over ?t1 ?t2) ;;tile t1 is OVER tile t2

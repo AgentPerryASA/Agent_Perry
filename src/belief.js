@@ -46,16 +46,20 @@ export class WorldMap {
   greenTiles;
   /** @type { TargetTile[] } */
   redTiles;
+  /** @type {IOTile[]} */
+  yellowTiles;
 
   /**
    * @param {string[][]} tiles
    * @param {TargetTile[]} greenTiles
    * @param {TargetTile[]} redTiles
+   * @param {IOTile[]} yellowTiles
    */
-  constructor(tiles, greenTiles, redTiles) {
+  constructor(tiles, greenTiles, redTiles, yellowTiles) {
     this.tiles = tiles;
     this.greenTiles = greenTiles;
     this.redTiles = redTiles;
+    this.yellowTiles = yellowTiles;
   }
 
   /**
@@ -78,6 +82,18 @@ export class WorldMap {
         return red;
       }
     }
+  }
+
+  /**
+   * @param {Coordinates} coordinates
+   */
+  getYellowTile(coordinates) {
+    for (const yellow of this.yellowTiles) {
+      if (yellow.x == coordinates.x && yellow.y == coordinates.y) {
+        return yellow;
+      }
+    }
+    return undefined;
   }
 }
 
@@ -148,7 +164,7 @@ export class Beliefs {
   constructor() {
     this.#parcelList = [];
     this.#carriedParcelList = [];
-    this.#tileMap = new WorldMap([], [], []);
+    this.#tileMap = new WorldMap([], [], [], []);
     this.#carriedParcelsCount = 0;
     this.#parcelMinScore = 0;
     this.#parcelMaxScore = 0;
@@ -392,6 +408,8 @@ export class Beliefs {
       } else if (tileType == "2") {
         // Red tiles (delivery)
         this.tileMap.redTiles.push(new TargetTile(coordinates));
+      } else if (tileType == "5" || tileType == "5!") {
+        this.tileMap.yellowTiles.push(tiles[i]);
       }
     }
 
@@ -449,7 +467,7 @@ export class Beliefs {
     }
 
     // Retrieve paths from greens to reds and vice versa
-    this.#pathFinder = new PathFinder(this.tileMap.tiles);
+    this.#pathFinder = new PathFinder(this.tileMap.tiles, undefined);
     for (const green of this.tileMap.greenTiles) {
       for (const red of this.tileMap.redTiles) {
         const path = this.#pathFinder.search(

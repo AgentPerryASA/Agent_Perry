@@ -99,7 +99,7 @@ export class GoToPlan extends PlanBase {
   constructor(agent) {
     super(agent);
 
-    this.#pathFinder = new PathFinder(this.agent.internalBelief.tileMap.tiles);
+    this.#pathFinder = new PathFinder(this.agent.internalBelief.tileMap.tiles, this.agent);
     this.#moveAttemptCount = 0;
 
     this.#completePath = undefined;
@@ -149,6 +149,20 @@ export class GoToPlan extends PlanBase {
 
     do {
       if (blockPoint) {
+        //Check whether the blockPoint is a 5 or 5! tile: in such case, a crate is present and the planner need to be invoked. The planner need to guide the agent until the next cell in the already existent path that is not a 5 or 5! tile.
+        let coordinates = new Coordinates(blockPoint.x,blockPoint.y)
+        if(this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
+          let endPoint = blockPoint;
+          for(const point of path) {
+            coordinates=new Coordinates(point.x,point.y)
+            if(!this.agent.internalBelief.tileMap.getYellowTile(coordinates)){
+              endPoint=point;
+              break;
+            }
+          }
+          await this.#pathFinder.searchWithPlanner(endPoint);
+        }
+
         // Temporarily replace the position of the obstacle with a '0' tile
         path = this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end, blockPoint);
 
