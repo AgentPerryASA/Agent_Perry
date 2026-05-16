@@ -275,10 +275,10 @@ export class Beliefs {
         const newReward =
           currentParcelFromBelief.cumulatedTime >= this.#parcelDecayTimerValue
             ? currentParcelFromBelief.parcel.reward -
-              Math.floor(
-                currentParcelFromBelief.cumulatedTime /
-                  this.#parcelDecayTimerValue,
-              )
+            Math.floor(
+              currentParcelFromBelief.cumulatedTime /
+              this.#parcelDecayTimerValue,
+            )
             : currentParcelFromBelief.parcel.reward;
 
         if (newReward < this.#parcelMinScore) {
@@ -460,15 +460,16 @@ export class Beliefs {
   /**@param {IOConfig} config*/
   updateGameConfiguration(config) {
     const avgScore = config.GAME.parcels.reward_avg;
-    // TODO: TEO
     this.#parcelMinScore = avgScore * 0.4;
-    this.#parcelMaxScore =
-      config.GAME.parcels.reward_avg * config.GAME.parcels.max -
-      config.GAME.parcels.max -
-      1;
+
+    // TODO: never used
+    const maxParcelCount = config.GAME.parcels.max;
+    this.#parcelMaxScore = avgScore * maxParcelCount - maxParcelCount - 1;
+
     this.#parcelDecayTimerValue = Number(
       config.GAME.parcels.decaying_event.toString().split("s")[0],
     );
+
     this.#gameSpeed = config.GAME.player.movement_duration;
   }
 

@@ -1,4 +1,4 @@
-/** @typedef Intention @type { GoToIntention | GoPickUpIntention | GoPutDownIntention | DeviateAndPickUpIntention } */
+/** @typedef Intention @type { GoToIntention | GoPickUpIntention | GoPutDownIntention | DeviateIntention | DeviateAndPickUpIntention } */
 /** @typedef IOParcel @type { import("@unitn-asa/deliveroo-js-sdk/server").IOParcel } */
 
 import { Coordinates } from "./coordinates.js";
@@ -117,6 +117,50 @@ export class GoPutDownIntention {
   }
 }
 
+export class DeviateIntention {
+  #parcel;
+  #parcelCoordinates;
+  #targetCoordinates;
+
+  /**
+   * @param {IOParcel} parcel 
+   * @param {Coordinates} targetCoordinates 
+   */
+  constructor(parcel, targetCoordinates) {
+    this.#parcel = parcel;
+    this.#parcelCoordinates = new Coordinates(parcel.x, parcel.y);
+    this.#targetCoordinates = targetCoordinates;
+  }
+
+  get parcel() {
+    return this.#parcel;
+  }
+
+  get parcelCoordinates() {
+    return this.#parcelCoordinates;
+  }
+
+  get targetCoordinates() {
+    return this.#targetCoordinates;
+  }
+
+  /**
+   * @param {Intention} intention
+   */
+  isEqual(intention) {
+    // NOTE: parcel attribute in intention if first condition true, so safe check
+    // @ts-ignore
+    return intention instanceof this.constructor && this.#parcel.id == intention.parcel.id;
+  }
+
+  /**
+   * @param {Intention} intention 
+   */
+  static isTypeOf(intention) {
+    return intention instanceof this;
+  }
+}
+
 export class DeviateAndPickUpIntention {
   #parcel;
   #parcelCoordinates;
@@ -126,7 +170,7 @@ export class DeviateAndPickUpIntention {
    * @param {IOParcel} parcel
    * @param {Coordinates} returnCoordinates
    */
-  constructor(parcel,returnCoordinates) {
+  constructor(parcel, returnCoordinates) {
     this.#parcel = parcel;
     this.#parcelCoordinates = new Coordinates(parcel.x, parcel.y);
     this.#returnCoordinates = returnCoordinates;
