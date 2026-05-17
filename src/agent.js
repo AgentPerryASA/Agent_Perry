@@ -7,7 +7,7 @@ import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention, DeviateIntention } from "./intention.js";
 import { Beliefs, TargetTile } from "./belief.js"
-import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js"
+import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviatePlan } from "./plan.js"
 
 export class Agent {
   #socket;
@@ -23,7 +23,7 @@ export class Agent {
   #internalBelief;
 
   constructor() {
-    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan];
+    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviatePlan, DeviateAndPickUpPlan];
     this.#intentionPlanQueue = [];
     this.#internalBelief = new Beliefs();
     this.#socket = DjsConnect();

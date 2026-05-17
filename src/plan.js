@@ -1,4 +1,4 @@
-/** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan } */
+/** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviatePlan | DeviateAndPickUpPlan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
 import { Agent } from "./agent.js";
@@ -8,6 +8,7 @@ import {
   GoToIntention,
   GoPutDownIntention,
   DeviateAndPickUpIntention,
+  DeviateIntention,
 } from "./intention.js";
 import { PathFinder, MapPoint } from "./path_finder.js";
 
@@ -133,17 +134,17 @@ export class GoToPlan extends PlanBase {
     const end = intention.destinationCoordinates;
     let path = undefined;
 
-    //Check whether a path was already calculated (therefore, a recovery was initiated), otherwise calculate a new path
+    // Check whether a path was already calculated (therefore, a recovery was initiated), otherwise calculate a new path
     if (this.#completePath) {
       path = this.#completePath;
     } else {
       path = intention.path ? intention.path : this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end);
     }
 
-    //let blockPointTuple;
+    // let blockPointTuple;
     let blockPoint = this.#bp;
 
-    //Reset situation for eventual future stop
+    // Reset situation for eventual future stop
     this.#bp = undefined;
     this.#completePath = undefined;
 
@@ -153,7 +154,7 @@ export class GoToPlan extends PlanBase {
         path = this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end, blockPoint);
 
         if (this.isStopped) {
-          //Save context for eventual recovery
+          // Save context for eventual recovery
           this.#saveContext(path, blockPoint);
 
           this.isRunning = false;
@@ -165,7 +166,7 @@ export class GoToPlan extends PlanBase {
       blockPoint = await this.#executePath(path)
 
       if (this.isStopped) {
-        //Save context for eventual recovery
+        // Save context for eventual recovery
         this.#saveContext(path, blockPoint);
 
         this.isRunning = false;
@@ -428,6 +429,52 @@ export class GoPutDownPlan extends PlanBase {
 
     console.log("reset")
     this.agent.internalBelief.deviateAndPickupIntentionCounter = 0;
+    this.isRunning = false;
+    return true;
+  }
+}
+
+export class DeviatePlan extends PlanBase {
+  #pathFinder;
+
+  /**
+   * @param {Agent} agent 
+   */
+  constructor(agent) {
+    super(agent)
+    // TODO: expose pathfinder from beliefs (goto too)
+    this.#pathFinder = new PathFinder(this.agent.internalBelief.tileMap.tiles);
+  }
+
+  /**
+   * @param {Intention} intention
+   */
+  static isApplicable(intention) {
+    return DeviateIntention.isTypeOf(intention);
+  }
+
+  /**
+   * @param {DeviateIntention} intention
+   */
+  async execute(intention) {
+    this.isRunning = true;
+    this.isStopped = false;
+
+    const subIntention = new GoPickUpIntention(intention.parcel);
+
+    // Compute in advance the path from parcel to target
+    let nextPath;
+    setTimeout(() => nextPath = this.#pathFinder.search(intention.parcelCoordinates, intention.targetCoordinates), 0);
+
+    await this.achieveSubIntention(subIntention);
+
+    if (this.isStopped) {
+      this.isRunning = false;
+      return false;
+    }
+
+    // TODO: uses nextPath for original intention in some way
+
     this.isRunning = false;
     return true;
   }
