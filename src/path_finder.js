@@ -67,8 +67,6 @@ export class PathFinder {
       });
 
       const plan = await onlineSolver(domainString, problemString);
-
-      console.log(plan);
     }
   }
 

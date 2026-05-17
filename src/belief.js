@@ -583,9 +583,6 @@ export class Beliefs {
    * @param {IOCrate[]} crates
    */
   updateTileWithCrate(crates) {
-    //Clear the existing map
-    this.#tileWithCrateMap.clear();
-
     //Recreate map
     for (const crate of crates) {
       this.#tileWithCrateMap.set(crate.id, new Coordinates(crate.x, crate.y));
@@ -605,6 +602,7 @@ export class Beliefs {
     const cratePositionList = [];
     for (const [_, c] of this.#tileWithCrateMap) {
       plannerBeliefs.declare(`crate tile${c.x}_${c.y}`);
+      console.log("pushed ", c);
       cratePositionList.push(c);
     }
 

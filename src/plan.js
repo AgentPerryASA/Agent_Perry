@@ -151,8 +151,18 @@ export class GoToPlan extends PlanBase {
       if (blockPoint) {
         //Check whether the blockPoint is a 5 or 5! tile: in such case, a crate is present and the planner need to be invoked. The planner need to guide the agent until the next cell in the already existent path that is not a 5 or 5! tile.
         let coordinates = new Coordinates(blockPoint.x,blockPoint.y)
+        console.log("blocked at ",blockPoint.x,blockPoint.y)
         if(this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
           let endPoint = blockPoint;
+          let startPoint = 0;
+          //Recover position on the path
+          for(const point of path) {
+            if(point.x==blockPoint.x && point.y==blockPoint.y) {
+              break;
+            }
+            startPoint+=1;
+          }
+          path = path.slice(startPoint,path.length-1)
           for(const point of path) {
             coordinates=new Coordinates(point.x,point.y)
             if(!this.agent.internalBelief.tileMap.getYellowTile(coordinates)){
@@ -160,6 +170,7 @@ export class GoToPlan extends PlanBase {
               break;
             }
           }
+          console.log("Try to go to",endPoint.x, endPoint.y)
           await this.#pathFinder.searchWithPlanner(endPoint);
         }
 
