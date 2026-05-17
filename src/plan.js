@@ -1,14 +1,12 @@
-/** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviatePlan | DeviateAndPickUpPlan } */
+/** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
 import { Agent } from "./agent.js";
-import { Coordinates } from "./coordinates.js";
 import {
   GoPickUpIntention,
   GoToIntention,
   GoPutDownIntention,
   DeviateAndPickUpIntention,
-  DeviateIntention,
 } from "./intention.js";
 import { PathFinder, MapPoint } from "./path_finder.js";
 
@@ -53,46 +51,48 @@ class PlanBase {
    * @param {Intention} intention
    */
   async achieveSubIntention(intention) {
-    if (!this.#subPlan) {
-      //Do not regenerate the plan if this already exists: means a recovery in in action
-      this.#subPlan = this.agent.selectPlan(intention);
-    }
+    // if (!this.#subPlan) {
+    //   // Do not regenerate the plan if this already exists: means a recovery in in action
+    //   this.#subPlan = this.agent.selectPlan(intention);
+    // }
+
+    this.#subPlan = this.agent.selectPlan(intention);
 
     if (this.#subPlan) {
-      if (this.isStopped) {
-        this.#isRunning = false;
-        return;
-      }
       // @ts-ignore
-      await this.#subPlan.execute(intention);
+      const isCompleted = await this.#subPlan.execute(intention);
+      if (isCompleted) {
+        this.#subPlan = undefined;
+        return true;
+      }
     }
+
+    return false;
   }
 
   async stop() {
     if (this.#isRunning) {
-      if (this.#subPlan) {
-        await this.#subPlan.stop();
-      }
-
       this.isStopped = true;
 
-      await new Promise((resolve) => {
-        this.#stopResolver = resolve;
-      });
+      if (this.#subPlan) {
+        // Stop the sub-plan, if exists, and if this is the case, execute() sets isRunning
+        // to false and returns false
+        await this.#subPlan.stop();
+      } else {
+        // If only the main plan is running, wait until execute() sets isRunning
+        // to false and returns false
+        await new Promise((resolve) => {
+          this.#stopResolver = resolve;
+        });
+      }
     }
   }
 }
 
 export class GoToPlan extends PlanBase {
   #pathFinder;
-
   #MAX_MOVE_ATTEMPTS = 10
   #moveAttemptCount;
-  /**@type {MapPoint | undefined} */
-  #bp;
-
-  /**@type {MapPoint[] | undefined}*/
-  #completePath;
 
   /**
    * @param {Agent} agent
@@ -102,9 +102,6 @@ export class GoToPlan extends PlanBase {
 
     this.#pathFinder = new PathFinder(this.agent.internalBelief.tileMap.tiles);
     this.#moveAttemptCount = 0;
-
-    this.#completePath = undefined;
-    this.#bp = undefined;
   }
 
   /**
@@ -115,16 +112,6 @@ export class GoToPlan extends PlanBase {
   }
 
   /**
-   * 
-   * @param {MapPoint[] | undefined} path 
-   * @param {MapPoint | undefined} blockPoint 
-   */
-  #saveContext(path, blockPoint) {
-    this.#completePath = path;
-    this.#bp = blockPoint;
-  }
-
-  /**
    * @param {GoToIntention} intention
    */
   async execute(intention) {
@@ -132,54 +119,26 @@ export class GoToPlan extends PlanBase {
     this.isStopped = false;
 
     const end = intention.destinationCoordinates;
-    let path = undefined;
-
-    // Check whether a path was already calculated (therefore, a recovery was initiated), otherwise calculate a new path
-    if (this.#completePath) {
-      path = this.#completePath;
-    } else {
-      path = intention.path ? intention.path : this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end);
-    }
-
-    // let blockPointTuple;
-    let blockPoint = this.#bp;
-
-    // Reset situation for eventual future stop
-    this.#bp = undefined;
-    this.#completePath = undefined;
+    let blockPoint;
+    let path = intention.path ?
+      intention.path :  // Use the path pre-computed by the intention, if available ...
+      this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end)  // ... otherwise search a path
 
     do {
       if (blockPoint) {
         // Temporarily replace the position of the obstacle with a '0' tile
         path = this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end, blockPoint);
-
-        if (this.isStopped) {
-          // Save context for eventual recovery
-          this.#saveContext(path, blockPoint);
-
-          this.isRunning = false;
-          return false;
-        }
-
       }
 
       blockPoint = await this.#executePath(path)
 
       if (this.isStopped) {
-        // Save context for eventual recovery
-        this.#saveContext(path, blockPoint);
-
         this.isRunning = false;
         return false;
       }
 
       // Repeat the loop if the plan is still running but the path is not completed (due to a block on the path)
     } while (blockPoint && this.isRunning);
-
-    if (this.isStopped) {
-      this.isRunning = false;
-      return false;
-    }
 
     this.isRunning = false;
     return true;
@@ -193,7 +152,6 @@ export class GoToPlan extends PlanBase {
     let i = 1;
 
     while (i < path.length) {
-      await new Promise(res => setTimeout(res, 70));
       if (this.isStopped) {
         this.isRunning = false;
         return;
@@ -251,20 +209,16 @@ export class GoToPlan extends PlanBase {
 
     return;
   }
+
+  /**
+   * @param {Plan} plan 
+   */
+  static isTypeOf(plan) {
+    return plan instanceof this;
+  }
 }
 
 export class GoPickUpPlan extends PlanBase {
-  /**@type {Intention | undefined} */
-  #gti;
-
-  /**
-   * @param {Agent} agent 
-   */
-  constructor(agent) {
-    super(agent);
-    this.#gti = undefined;
-  }
-
   /**
    * @param {Intention} intention
    */
@@ -279,15 +233,13 @@ export class GoPickUpPlan extends PlanBase {
     this.isRunning = true;
     this.isStopped = false;
 
-    //Do not regenerate a new subIntention if it was already generated, a recovery could be in progress
-    const subIntention = this.#gti ? this.#gti : new GoToIntention(intention.parcelCoordinates);
-    if (!this.#gti) {
-      this.#gti = subIntention;
-    }
+    const subIntention = new GoToIntention(intention.parcelCoordinates);
 
-    await this.achieveSubIntention(subIntention);
+    const isCompleted = await this.achieveSubIntention(subIntention);
 
-    if (this.isStopped) {
+    if (!isCompleted) {
+      // The sub-intention was stopped
+      this.isStopped = true;
       this.isRunning = false;
       return false;
     }
@@ -298,31 +250,90 @@ export class GoPickUpPlan extends PlanBase {
       this.agent.internalBelief.carriedParcelsCount += 1;
     }
 
-    if (this.isStopped) {
+    this.isRunning = false;
+    return true;
+  }
+
+  /**
+   * @param {Plan} plan 
+   */
+  static isTypeOf(plan) {
+    return plan instanceof this;
+  }
+}
+
+export class GoPutDownPlan extends PlanBase {
+  /** @type { MapPoint[] | undefined } */
+  #pathFromDeviation;
+
+  /**
+   * @param {MapPoint[] | undefined} value 
+   */
+  set pathFromDeviation(value) {
+    this.#pathFromDeviation = value;
+  }
+
+  /**
+   * @param {Intention} intention
+   */
+  static isApplicable(intention) {
+    return GoPutDownIntention.isTypeOf(intention);
+  }
+
+  /**
+   * @param {GoPutDownIntention} intention
+   */
+  async execute(intention) {
+    this.isRunning = true;
+    this.isStopped = false;
+
+    const path = this.#pathFromDeviation ? this.#pathFromDeviation : intention.path;
+    const subIntention = new GoToIntention(intention.deliveryCoordinates, path);
+
+    const isCompleted = await this.achieveSubIntention(subIntention);
+
+    if (!isCompleted) {
+      // The sub-intention was stopped
+      this.isStopped = true;
       this.isRunning = false;
       return false;
     }
 
+    const putDownResult = await this.agent.socket.emitPutdown();
+
+    if (putDownResult.length > 0) {
+      this.agent.internalBelief.carriedParcelsCount = 0;
+    }
+
+    this.agent.internalBelief.deviateAndPickupIntentionCounter = 0;
     this.isRunning = false;
     return true;
+  }
+
+  /**
+   * @param {Plan} plan 
+   */
+  static isTypeOf(plan) {
+    return plan instanceof this;
   }
 }
 
 export class DeviateAndPickUpPlan extends PlanBase {
-  #firstPartCompleted;
-  /**@type {Intention | undefined} */
-  #gtig;
-  /**@type {Intention | undefined} */
-  #gtib;
+  #pathFinder;
+  /** @type { MapPoint[] | undefined } */
+  #pathFromParcelToTarget;
 
   /**
    * @param {Agent} agent 
    */
   constructor(agent) {
     super(agent)
-    this.#gtib = undefined;
-    this.#gtib = undefined;
-    this.#firstPartCompleted = false;
+    // TODO: expose pathfinder from beliefs (goto too)
+    this.#pathFinder = new PathFinder(this.agent.internalBelief.tileMap.tiles);
+  }
+
+  get pathFromParcelToTarget() {
+    return this.#pathFromParcelToTarget;
   }
 
   /**
@@ -339,143 +350,28 @@ export class DeviateAndPickUpPlan extends PlanBase {
     this.isRunning = true;
     this.isStopped = false;
 
-    //For some reason the coordinates of the intention get overwritten. Until the problem is found this fix the issue
-    const returnC = new Coordinates(intention.returnCoordinates.x, intention.returnCoordinates.y)
-
-    let subIntention;
-
-    if (!this.#firstPartCompleted) {
-      subIntention = this.#gtig ? this.#gtig : new GoToIntention(intention.parcelCoordinates);
-
-      if (!this.#gtig) {
-        this.#gtig = subIntention;
-      }
-
-      await this.achieveSubIntention(subIntention);
-
-      if (this.isStopped) {
-        this.isRunning = false;
-        return false;
-      }
-
-      const result = await this.agent.socket.emitPickup();
-
-      if (result.length > 0) {
-        this.agent.internalBelief.carriedParcelsCount += 1;
-        this.#firstPartCompleted = true;
-      }
-
-      if (this.isStopped) {
-        this.isRunning = false;
-        return false;
-      }
-    }
-
-
-    console.log("Going back to ", returnC, "from", intention.parcelCoordinates)
-    subIntention = this.#gtib ? this.#gtib : new GoToIntention(returnC);
-    if (!this.#gtib) {
-      this.#gtib = subIntention;
-    }
-    await this.achieveSubIntention(subIntention)
-
-    console.log("end")
-
-    this.isRunning = false;
-    return true;
-  }
-}
-
-export class GoPutDownPlan extends PlanBase {
-  /**@type {undefined | Intention }*/
-  #gti = undefined;
-  /**
-   * @param {Intention} intention
-   */
-  static isApplicable(intention) {
-    return GoPutDownIntention.isTypeOf(intention);
-  }
-
-  /**
-   * @param {GoPutDownIntention} intention
-   */
-  async execute(intention) {
-
-    this.isRunning = true;
-    this.isStopped = false;
-
-    const subIntention = this.#gti ? this.#gti : new GoToIntention(intention.deliveryCoordinates, intention.path);
-    if (!this.#gti) {
-      this.#gti = subIntention;
-    }
-
-    await this.achieveSubIntention(subIntention);
-
-    if (this.isStopped) {
-      this.isRunning = false;
-      return false;
-    }
-
-    const result = await this.agent.socket.emitPutdown();
-
-    if (result.length > 0) {
-      this.agent.internalBelief.carriedParcelsCount = 0;
-    }
-
-    if (this.isStopped) {
-      this.isRunning = false;
-      return false;
-    }
-
-    console.log("reset")
-    this.agent.internalBelief.deviateAndPickupIntentionCounter = 0;
-    this.isRunning = false;
-    return true;
-  }
-}
-
-export class DeviatePlan extends PlanBase {
-  #pathFinder;
-
-  /**
-   * @param {Agent} agent 
-   */
-  constructor(agent) {
-    super(agent)
-    // TODO: expose pathfinder from beliefs (goto too)
-    this.#pathFinder = new PathFinder(this.agent.internalBelief.tileMap.tiles);
-  }
-
-  /**
-   * @param {Intention} intention
-   */
-  static isApplicable(intention) {
-    return DeviateIntention.isTypeOf(intention);
-  }
-
-  /**
-   * @param {DeviateIntention} intention
-   */
-  async execute(intention) {
-    this.isRunning = true;
-    this.isStopped = false;
-
     const subIntention = new GoPickUpIntention(intention.parcel);
 
     // Compute in advance the path from parcel to target
-    let nextPath;
-    setTimeout(() => nextPath = this.#pathFinder.search(intention.parcelCoordinates, intention.targetCoordinates), 0);
+    setTimeout(() => this.#pathFromParcelToTarget = this.#pathFinder.search(intention.parcelCoordinates, intention.targetCoordinates), 0);
 
-    await this.achieveSubIntention(subIntention);
+    const isCompleted = await this.achieveSubIntention(subIntention);
 
-    if (this.isStopped) {
+    if (!isCompleted) {
+      // The sub-intention was stopped
+      this.isStopped = true;
       this.isRunning = false;
       return false;
     }
 
-    // TODO: uses nextPath for original intention in some way
-
     this.isRunning = false;
     return true;
+  }
+
+  /**
+   * @param {Plan} plan 
+   */
+  static isTypeOf(plan) {
+    return plan instanceof this;
   }
 }
