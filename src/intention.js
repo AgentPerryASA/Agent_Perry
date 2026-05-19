@@ -120,28 +120,28 @@ export class GoPutDownIntention {
 export class DeviateAndPickUpIntention {
   #parcel;
   #parcelCoordinates;
-  #returnCoordinates;
+  #targetCoordinates;
 
   /**
-   * @param {IOParcel} parcel
-   * @param {Coordinates} returnCoordinates
+   * @param {IOParcel} parcel 
+   * @param {Coordinates} targetCoordinates 
    */
-  constructor(parcel,returnCoordinates) {
+  constructor(parcel, targetCoordinates) {
     this.#parcel = parcel;
     this.#parcelCoordinates = new Coordinates(parcel.x, parcel.y);
-    this.#returnCoordinates = returnCoordinates;
-  }
-
-  get parcelCoordinates() {
-    return this.#parcelCoordinates;
+    this.#targetCoordinates = targetCoordinates;
   }
 
   get parcel() {
     return this.#parcel;
   }
 
-  get returnCoordinates() {
-    return this.#returnCoordinates;
+  get parcelCoordinates() {
+    return this.#parcelCoordinates;
+  }
+
+  get targetCoordinates() {
+    return this.#targetCoordinates;
   }
 
   /**

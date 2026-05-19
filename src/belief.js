@@ -239,8 +239,8 @@ export class Beliefs {
    * @param {IOAgent} agent
    */
   updateMe(agent) {
-    //No, nothing to do with despicable me
-    //Skip intermediate values (0.6 or 0.4)
+    // No, nothing to do with despicable me
+    // Skip intermediate values (0.6 or 0.4)
     if (
       agent.x != undefined &&
       agent.x % 1 == 0 &&
@@ -273,13 +273,15 @@ export class Beliefs {
     }
 
     for (let i = 0; i < this.#parcelList.length; i += 1) {
-      const currentParcelFromBelief = this.#parcelList[i]; //parcel from belief
+      const currentParcelFromBelief = this.#parcelList[i]; // Parcel from belief
       const currentParcelFromSensedList = sensedParcelsMap.get(
         currentParcelFromBelief.parcel.id,
-      ); //parcel from sensed list
+      ); // Parcel from sensed list
 
       if (currentParcelFromSensedList != undefined) {
-        // If the current parcel was in the sensed list, then update value with that. A check to see if it is now carried is necessary, as well as a check to see whether the parcel is still good to be picked up (>= min value).
+        // If the current parcel was in the sensed list, then update value with that.
+        // A check to see if it is now carried is necessary, as well as a check to see whether
+        // the parcel is still good to be picked up (>= min value).
         if (
           currentParcelFromSensedList.carriedBy == undefined &&
           currentParcelFromSensedList.reward >= this.#parcelMinScore
@@ -301,10 +303,10 @@ export class Beliefs {
         const newReward =
           currentParcelFromBelief.cumulatedTime >= this.#parcelDecayTimerValue
             ? currentParcelFromBelief.parcel.reward -
-              Math.floor(
-                currentParcelFromBelief.cumulatedTime /
-                  this.#parcelDecayTimerValue,
-              )
+            Math.floor(
+              currentParcelFromBelief.cumulatedTime /
+              this.#parcelDecayTimerValue,
+            )
             : currentParcelFromBelief.parcel.reward;
 
         if (newReward < this.#parcelMinScore) {
@@ -341,8 +343,8 @@ export class Beliefs {
    * @param {IOParcel[]} sensedParcelsList
    */
   reviseCarriedParcelList(sensedParcelsList) {
-    //Assume that no parcel is dropped after being picked up, therefore, it is not possible to pickup a previously picked up parcel.
-    //Notice that onSensing is triggered when the agent has a parcel, even if it is not moving
+    // Assume that no parcel is dropped after being picked up, therefore, it is not possible to pickup a previously picked up parcel.
+    // Notice that onSensing is triggered when the agent has a parcel, even if it is not moving
     const endTime = Date.now() + 0.01 * this.#carriedParcelList.length;
 
     let sensedParcelsMap = new Map();
@@ -362,20 +364,21 @@ export class Beliefs {
         currentParcelFromBelief.parcel.id,
       );
       if (currentParcelFromSensedList != undefined) {
-        //If parcel was already present in list, update its information
+        // If parcel was already present in list, update its information
         currentParcelFromBelief.parcel = currentParcelFromSensedList;
         currentParcelFromBelief.lastUpdateTimestamp = endTime;
         currentParcelFromBelief.cumulatedTime +=
           (endTime - currentParcelFromBelief.lastUpdateTimestamp) / 1000;
         sensedParcelsMap.delete(currentParcelFromBelief.parcel.id);
       } else {
-        //If parcel is not present in the sensed list, this means the agent no longer carries it, therefore, it needs to be dropped from the list
+        // If parcel is not present in the sensed list, this means the agent no longer carries it,
+        // therefore, it needs to be dropped from the list
         this.#carriedParcelList.splice(i);
         i -= 1;
       }
     }
 
-    //Finally, add the new parcels that were picked up
+    // Finally, add the new parcels that were picked up
     for (const [_, parcel] of sensedParcelsMap) {
       let newParcel = new Parcel(parcel, Date.now());
       this.#carriedParcelList.push(newParcel);
@@ -515,41 +518,15 @@ export class Beliefs {
     }
   }
 
-  /**
-   * @param {{x:number, y:number}} param0
-   */
-  removeTile({ x: x, y: y }) {
-    console.log("Attempt to remove no needed");
-
-    // this.#tileMap.tiles[x][y] = "0";
-
-    // let index = this.#tileMap.green.findIndex((c) =>
-    //   c.isEqual(new Coordinates(x, y)),
-    // );
-    // if (index != -1) {
-    //   this.#tileMap.green.splice(index, 1);
-    // }
-
-    // index = this.#tileMap.red.findIndex((c) =>
-    //   c.isEqual(new Coordinates(x, y)),
-    // );
-    // if (index != -1) {
-    //   this.#tileMap.red.splice(index, 1);
-    // }
-  }
-
   /**@param {IOConfig} config*/
   updateGameConfiguration(config) {
     const avgScore = config.GAME.parcels.reward_avg;
-    // TODO: TEO
     this.#parcelMinScore = avgScore * 0.4;
-    this.#parcelMaxScore =
-      config.GAME.parcels.reward_avg * config.GAME.parcels.max -
-      config.GAME.parcels.max -
-      1;
+
     this.#parcelDecayTimerValue = Number(
       config.GAME.parcels.decaying_event.toString().split("s")[0],
     );
+
     this.#gameSpeed = config.GAME.player.movement_duration;
   }
 
@@ -565,6 +542,7 @@ export class Beliefs {
   }
 
   getMinValuableParcel() {
+    // TODO: unused, remove
     let minParcelReward = Number.MAX_VALUE;
     let minParcel = undefined;
 

@@ -11,13 +11,12 @@ import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./p
 
 export class Agent {
   #socket;
-  // TODO: TEO
+  // TODO: TEO -> belief
   /**@type {(typeof GoToPlan | typeof GoPickUpPlan | typeof GoPutDownPlan | typeof DeviateAndPickUpPlan)[]}*/
   #planLibrary;
-  #intentionList;
   /** @type { {intention: Intention, plan: Plan}[] } */
   #intentionPlanQueue;
-  // TODO: TEO
+  // TODO: TEO -> belief
   /** @type { TargetTile | undefined } */
   #currentTargetTile;
 
@@ -26,7 +25,6 @@ export class Agent {
 
   constructor() {
     this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan];
-    this.#intentionList = new IntentionList();
     this.#intentionPlanQueue = [];
     this.#internalBelief = new Beliefs();
     this.#socket = DjsConnect();
@@ -114,65 +112,39 @@ export class Agent {
   }
 
   #selectBestIntention() {
-    //Every possible parcel count for a possible deviation
-    for (const parcel of this.#internalBelief.parcelList) {
-      const deviateIntention = new DeviateAndPickUpIntention(parcel.parcel, this.#internalBelief.me.coordinates);
-      this.#intentionList.deviateAndPickUp.push(deviateIntention);
-    }
-
-    //First, check whether deviation are possible. Rules:
-    //check the current picked up parcel and their reward wrt the maximum value (mv) and test the one that has the smaller value.
-    //assuming speed of movement being x, this means a move every x ms can be performed, therefore, a deviation is safe if the time to get the new parcel and return
-    //to the original position allows the minimum parcel survive with reasonable time to achieve the action before the deviation. It is reasonable if the value of the new packet when I am in the previous position is higher than the carried parcel with minimum value.
-
-    //Find if a goPutDown was already chosen. Use the cycle to also find out the packages that are already in list to be picked up, to prevent duplicates in deviations
-    let goPutDownDecisionFound = false;
-    let toPickUpList = new Map();
-    let goPickUpDecisionFound = false; //needed later to prevent pushing two goPickUpIntention
-    for (const i of this.#intentionPlanQueue) {
-      if (GoPutDownIntention.isTypeOf(i.intention)) {
-        goPutDownDecisionFound = true;
-        continue
-      } else if (DeviateAndPickUpIntention.isTypeOf(i.intention)) {
-        toPickUpList.set(i.intention.parcel.id, i.intention.parcel);
-        continue
-      } else if (GoPickUpIntention.isTypeOf(i.intention)) {
-        toPickUpList.set(i.intention.parcel.id, i.intention.parcel);
-        goPickUpDecisionFound = true;
-      }
-    }
-
-    //Add to pickUpList already carried parcels
-    for (const p of this.#internalBelief.carriedParcelList) {
-      toPickUpList.set(p.parcel.id, p.parcel);
-    }
-
-
-    if (goPutDownDecisionFound && this.#internalBelief.deviateAndPickupIntentionCounter < 3) {
-
-      const minParcel = this.#internalBelief.getMinValuableParcel();
+    const goPutDownIntention = this.#getFirstInstanceOfTypeInQueue(GoPutDownIntention);
+    // Check if any deviation is possible only if our main intention is to delivery
+    if (goPutDownIntention && this.#internalBelief.deviateAndPickupIntentionCounter < 5) {
       const gameSpeed = this.#internalBelief.gameSpeed;
       const parcelDecayTime = this.#internalBelief.parcelDecayTimerValue * 1000;
 
-      for (let i = 0; i < this.#intentionList.deviateAndPickUp.length; i += 1) {
+      for (const parcel of this.#internalBelief.parcelList) {
+        const parcelCoordinates = new Coordinates(parcel.parcel.x, parcel.parcel.y);
 
-        const dpi = this.#intentionList.deviateAndPickUp[i];
-        const distance = this.#internalBelief.pathFinder ? this.#internalBelief.pathFinder.search(this.#internalBelief.me.coordinates, dpi.parcelCoordinates).length : this.#distance(this.#internalBelief.me.coordinates, dpi.parcelCoordinates)
-        const lostReward = Math.floor((distance * gameSpeed * 2) / parcelDecayTime);
-        const futureValueNewParcel = dpi.parcel.reward - lostReward;
-        const futureValueCarriedParcel = minParcel ? minParcel.reward - lostReward : Number.MIN_VALUE;
+        // Compute the distance from the parcel
+        const distance = this.#internalBelief.pathFinder ?
+          this.#internalBelief.pathFinder.search(this.#internalBelief.me.coordinates, parcelCoordinates).length :
+          this.#distance(this.#internalBelief.me.coordinates, parcelCoordinates);
+        // Estimate the loss of the reward of parcels if we deviated
+        // NOTE: sometimes the deviation might be along the main path, other times we have to go back,
+        //       so the 1.5 multiplier estimate the distance covered per each deviation
+        const lostReward = Math.floor((distance * gameSpeed * 1.5) / parcelDecayTime);
+        // Estimate the reward of the new parcel after the deviation
+        const futureValueNewParcel = parcel.parcel.reward - lostReward;
 
-        if (futureValueNewParcel > futureValueCarriedParcel && toPickUpList.get(dpi.parcel.id) == undefined) {
-
+        if (futureValueNewParcel > this.#internalBelief.parcelMinScore) {
           this.#internalBelief.deviateAndPickupIntentionCounter += 1;
-          return dpi;
+          // @ts-ignore
+          // NOTE: if entered here, goPutDownIntention is safely of type GoPutDownIntention
+          return new DeviateAndPickUpIntention(parcel.parcel, goPutDownIntention.deliveryCoordinates);
         }
-
       }
     }
 
-    //If a GoPutDown was already decided, prevent generation of further decision. In this situation, the only one allowed is a deviation
-    if (goPutDownDecisionFound || goPickUpDecisionFound) {
+    // If either a GoPutDownIntention or a GoPickUpIntention was already decided,
+    // prevent generation of further intentions. In this situation, the only one allowed is a deviation
+    const goPickUpIntentionFound = this.#isTypeOfIntentionInQueue(GoPickUpIntention);
+    if (goPutDownIntention || goPickUpIntentionFound) {
       return;
     }
 
@@ -190,11 +162,6 @@ export class Agent {
           }
         }
       }
-    }
-
-    // TODO: REMOVE
-    if (this.#currentIntention && GoPickUpIntention.isTypeOf(this.#currentIntention)) {
-      return;
     }
 
     // Check the intention of picking up the free parcel with the highest score
@@ -218,7 +185,8 @@ export class Agent {
     // NOTE: GoToIntention generation cannot be allowed if the current one is already a GoToIntention
     //       because it would select a random green, and since it would be probably different from the
     //       current destination, it would push it as "new best intention"
-    if (this.#currentIntention && GoToIntention.isTypeOf(this.#currentIntention)) {
+    const goToIntentionFound = this.#isTypeOfIntentionInQueue(GoToIntention);
+    if (goToIntentionFound) {
       return;
     }
 
@@ -261,45 +229,40 @@ export class Agent {
 
     // Stop the current intention before pushing the new one
     await this.#stopCurrentIntention();
+    // If a GoToIntention was stopped, pop it (no need to be maintained in the queue)
+    if (this.#currentIntention && GoToIntention.isTypeOf(this.#currentIntention)) {
+      this.#intentionPlanQueue.pop();
+    }
+
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
-
-    console.log("new intention: ", intention, this.#intentionPlanQueue)
-
-    if (DeviateAndPickUpIntention.isTypeOf(intention)) {
-      console.log("--from ", intention.returnCoordinates, "to ", intention.parcelCoordinates, "for", intention.parcel.id)
-    }
-    if (GoPickUpIntention.isTypeOf(intention)) {
-      console.log("--Go to parcel ", intention.parcel.id)
-    }
-
-    if (GoToIntention.isTypeOf(intention)) {
-      console.log("--", this.#internalBelief.me.coordinates.toString(), " -> ", intention.destinationCoordinates.toString())
-    }
 
     await this.#achieveCurrentIntention();
   }
 
   async #achieveCurrentIntention() {
-    // NOTE: at this point, both currentIntention and currentPlan cannot be undefined
-    const oldIntention = this.#currentIntention;
     // @ts-ignore
+    // NOTE: at this point, both currentIntention and currentPlan cannot be undefined
     const isCompleted = await this.#currentPlan.execute(this.#currentIntention);
 
-    // @ts-ignore
     // Pop current intention-plan pair if the intention is achieved or, if it was stopped,
     // it was a GoToIntention (no need to be maintained in the queue)
-    if (isCompleted || GoToIntention.isTypeOf(oldIntention)) {
+    if (isCompleted) {
       if (this.#currentIntention) {
+        // Assign the target tile we just reached, if exists
         this.#assignCurrentTargetTile(this.#currentIntention);
       }
 
-      const tmp = this.#currentIntention;
+      const oldPlan = this.#currentPlan;
       this.#intentionPlanQueue.pop()
-      console.log("Popped ", tmp, this.#intentionPlanQueue)
 
       if (this.#currentIntention) {
-        console.log("recover")
-        // @ts-ignore
+        if (oldPlan && DeviateAndPickUpPlan.isTypeOf(oldPlan)) {
+          if (this.#currentPlan && GoPutDownPlan.isTypeOf(this.#currentPlan)) {
+            // Re-execute GoPutDownPlan using the path pre-calculated by DeviateAndPickUpPlan
+            this.#currentPlan.pathFromDeviation = oldPlan.pathFromParcelToTarget;
+          }
+        }
+
         await this.#achieveCurrentIntention()
       }
     }
@@ -308,7 +271,6 @@ export class Agent {
   async #stopCurrentIntention() {
     if (this.#currentPlan && this.#currentPlan.isRunning) {
       await this.#currentPlan.stop();
-      console.log("STOPPED ", this.#currentPlan)
     }
   }
 
@@ -350,6 +312,20 @@ export class Agent {
     }
   }
 
+  /**
+   * @param {typeof GoToIntention | typeof GoPickUpIntention | typeof GoPutDownIntention | typeof DeviateAndPickUpIntention} intentionClass 
+   */
+  #isTypeOfIntentionInQueue(intentionClass) {
+    return this.#intentionPlanQueue.some(obj => obj.intention instanceof intentionClass);
+  }
+
+  /**
+   * @param {typeof GoToIntention | typeof GoPickUpIntention | typeof GoPutDownIntention | typeof DeviateAndPickUpIntention} intentionClass
+  */
+  #getFirstInstanceOfTypeInQueue(intentionClass) {
+    return this.#intentionPlanQueue.find(obj => obj.intention instanceof intentionClass)?.intention;
+  }
+
   /** @type { function ({x:number, y:number}, {x:number, y:number}): number } */
   #distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
     const dx = Math.abs(Math.round(x1) - Math.round(x2))
@@ -366,42 +342,5 @@ export class Agent {
         return new plan(this);
       }
     }
-  }
-}
-
-class IntentionList {
-  /** @type { GoToIntention[] } */
-  #goTo;
-  /** @type { GoPickUpIntention[] } */
-  #goPickUp;
-  /** @type { GoPutDownIntention | undefined } */
-  goPutDown;
-
-  /** @type { DeviateAndPickUpIntention[] } */
-  #deviateAndPickUp
-
-  constructor() {
-    this.#goTo = [];
-    this.#goPickUp = [];
-    this.#deviateAndPickUp = [];
-  }
-
-  get goTo() {
-    return this.#goTo;
-  }
-
-  get goPickUp() {
-    return this.#goPickUp;
-  }
-
-  get deviateAndPickUp() {
-    return this.#deviateAndPickUp;
-  }
-
-  clean() {
-    this.#goTo = [];
-    this.#goPickUp = [];
-    this.goPutDown = undefined;
-    this.#deviateAndPickUp = [];
   }
 }

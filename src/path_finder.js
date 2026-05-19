@@ -4,16 +4,6 @@ import fs from "fs";
 import { Agent } from "./agent.js";
 
 export class PathFinder {
-  // TODO: REMOVE
-  /**
-   * @param {MapPoint[]} path
-   */
-  static printPath(path) {
-    for (const p of path) {
-      console.log(p.x, p.y);
-    }
-  }
-
   #algorithm;
   #agent;
 
