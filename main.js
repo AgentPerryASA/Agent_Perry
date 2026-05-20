@@ -1,3 +1,8 @@
-import { Agent } from './src/agent.js';
+import 'dotenv/config';
+import { BDIAgent } from './src/bdi_agent.js';
 
-new Agent();
+const token1 = process.env.TOKEN1 || "";
+const token2 = process.env.TOKEN2 || "";
+
+new BDIAgent(token1);
+new BDIAgent(token2);

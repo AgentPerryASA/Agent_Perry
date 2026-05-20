@@ -9,7 +9,7 @@ import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpI
 import { Beliefs, TargetTile } from "./belief.js"
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js"
 
-export class Agent {
+export class BDIAgent {
   #socket;
   // TODO: TEO -> belief
   #planLibrary;
@@ -22,11 +22,14 @@ export class Agent {
   /** @type { Beliefs } */
   #internalBelief;
 
-  constructor() {
+  /**
+   * @param {string} token 
+   */
+  constructor(token) {
     this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan];
     this.#intentionPlanQueue = [];
     this.#internalBelief = new Beliefs();
-    this.#socket = DjsConnect();
+    this.#socket = DjsConnect(undefined, token);
 
     this.init();
   }

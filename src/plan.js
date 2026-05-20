@@ -1,7 +1,7 @@
 /** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
-import { Agent } from "./agent.js";
+import { BDIAgent } from "./bdi_agent.js";
 import {
   GoPickUpIntention,
   GoToIntention,
@@ -20,7 +20,7 @@ class PlanBase {
   #stopResolver;
 
   /**
-   * @param {Agent} agent
+   * @param {BDIAgent} agent
    */
   constructor(agent) {
     this.#agent = agent;
@@ -95,7 +95,7 @@ export class GoToPlan extends PlanBase {
   #moveAttemptCount;
 
   /**
-   * @param {Agent} agent
+   * @param {BDIAgent} agent
    */
   constructor(agent) {
     super(agent);
@@ -324,7 +324,7 @@ export class DeviateAndPickUpPlan extends PlanBase {
   #pathFromParcelToTarget;
 
   /**
-   * @param {Agent} agent 
+   * @param {BDIAgent} agent 
    */
   constructor(agent) {
     super(agent)
