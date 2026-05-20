@@ -8,6 +8,7 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs, TargetTile } from "./belief.js"
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js"
+import { Message } from './message.js';
 
 export class BDIAgent {
   #socket;
@@ -86,10 +87,14 @@ export class BDIAgent {
       });
     }));
 
+    // @ts-ignore
+    this.#socket.onMsg((id, name, msg) => this.onMsg(id, name, msg));
+    // Ask the handshake to the team mate
+    this.#handshake();
+
     // Wait onConfig, onMap and onYou to receive the first event before starting the logic
     // The average parcel score, the tile map and the "me" info are required for the following classes and methods
     Promise.all(promiseList).then(async () => {
-
       // Keep track of parcels around us
       this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels)
@@ -102,6 +107,47 @@ export class BDIAgent {
         await this.#generateBestIntention();
       }, 100)
     })
+  }
+
+  async #handshake() {
+    const handshakeMsg = process.env.HANDSHAKE_MSG;
+    if (!handshakeMsg) {
+      console.error("Error: missing HANDSHAKE_MSG in .env file");
+      process.exit(1);
+    }
+
+    this.#socket.emitShout(new Message(handshakeMsg, true));
+  }
+
+  /**
+   * @param {string} id 
+   * @param {string} name 
+   * @param {Message} msg 
+   */
+  async onMsg(id, name, msg) {
+    if (msg.handshake && msg.content == process.env.HANDSHAKE_MSG) {
+      this.#internalBelief.mateId = id;
+      console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`)
+      return;
+    }
+
+    console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received "${msg.content}" from ${name}`)
+  }
+
+  sendToLLM() {
+    this.#socket.emitSay(
+      // NOTE: The BDI agent is not programmed to receive messages from itself,
+      // so this will be received only by the LLM if associated to this agent
+      this.#internalBelief.me.id,
+      new Message(`Test message`)
+    )
+  }
+
+  sendToMate() {
+    this.#socket.emitSay(
+      this.#internalBelief.mateId,
+      new Message(`Test message`)
+    )
   }
 
   async #generateBestIntention() {

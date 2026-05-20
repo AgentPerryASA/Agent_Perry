@@ -137,6 +137,9 @@ export class Beliefs {
   /**@type {Me}*/
   #me;
 
+  /**@type {string} */
+  #mateId;
+
   constructor() {
     this.#parcelList = [];
     this.#carriedParcelList = [];
@@ -150,6 +153,7 @@ export class Beliefs {
     this.#deviateAndPickupIntentionCounter = 0;
     this.#pathFinder = undefined;
     this.#me = new Me("", "", 0, new Coordinates(0, 0));
+    this.#mateId = ""
   }
 
   get tileMap() {
@@ -196,12 +200,22 @@ export class Beliefs {
     return this.#pathFinder;
   }
 
-  set deviateAndPickupIntentionCounter(n) {
-    this.#deviateAndPickupIntentionCounter = n;
+  get mateId() {
+    return this.#mateId;
   }
 
-  set carriedParcelsCount(n) {
-    this.#carriedParcelsCount = n;
+  set deviateAndPickupIntentionCounter(value) {
+    this.#deviateAndPickupIntentionCounter = value;
+  }
+
+  set carriedParcelsCount(value) {
+    this.#carriedParcelsCount = value;
+  }
+
+  set mateId(value) {
+    if (!this.#mateId) {
+      this.#mateId = value;
+    }
   }
 
   clearCarriedParcelList() {

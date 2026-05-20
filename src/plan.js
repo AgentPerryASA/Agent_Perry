@@ -191,8 +191,6 @@ export class GoToPlan extends PlanBase {
 
       if (!movedHorizontally && !movedVertically) {
         // Agent did not move
-        console.log("FAIL", movedHorizontally, movedVertically)
-
         if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
           // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
           return step;
