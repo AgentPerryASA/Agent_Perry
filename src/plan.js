@@ -2,6 +2,7 @@
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
 import { Agent } from "./agent.js";
+import { Coordinates } from "./coordinates.js";
 import {
   GoPickUpIntention,
   GoToIntention,
@@ -354,7 +355,7 @@ export class DeviateAndPickUpPlan extends PlanBase {
   constructor(agent) {
     super(agent)
     // TODO: expose pathfinder from beliefs (goto too)
-    this.#pathFinder = new PathFinder(this.agent.internalBelief.tileMap.tiles);
+    this.#pathFinder = this.agent.internalBelief.pathFinder;
   }
 
   get pathFromParcelToTarget() {
@@ -378,7 +379,11 @@ export class DeviateAndPickUpPlan extends PlanBase {
     const subIntention = new GoPickUpIntention(intention.parcel);
 
     // Compute in advance the path from parcel to target
-    setTimeout(() => this.#pathFromParcelToTarget = this.#pathFinder.search(intention.parcelCoordinates, intention.targetCoordinates), 0);
+    setTimeout(() => {
+      if(this.#pathFinder) {
+        this.#pathFromParcelToTarget = this.#pathFinder.search(intention.parcelCoordinates, intention.targetCoordinates)
+      }
+    }, 0);
 
     const isCompleted = await this.achieveSubIntention(subIntention);
 

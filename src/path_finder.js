@@ -31,6 +31,7 @@ export class PathFinder {
    */
   async searchWithPlanner(end) {
     if (this.#agent) {
+
       //Get belief already prepared for the planner
       const bs = this.#agent.internalBelief.getBeliefForPlanner();
 
@@ -56,7 +57,8 @@ export class PathFinder {
         });
       });
 
-      const plan = await onlineSolver(domainString, problemString);
+      return await onlineSolver(domainString, problemString);
+
     }
   }
 
@@ -203,7 +205,7 @@ class Astar {
         for (const neighbor of point.neighbors) {
           neighbor.updateNeighbors(this.#map);
         }
-      }, 5000);
+      }, 2500);
     }
   }
 
