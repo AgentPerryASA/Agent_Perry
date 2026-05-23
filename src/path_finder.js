@@ -31,7 +31,6 @@ export class PathFinder {
    */
   async searchWithPlanner(end) {
     if (this.#agent) {
-
       //Get belief already prepared for the planner
       const bs = this.#agent.internalBelief.getBeliefForPlanner();
 
@@ -56,9 +55,9 @@ export class PathFinder {
           else res(data);
         });
       });
+      const plannerPlan = await onlineSolver(domainString, problemString);
 
-      return await onlineSolver(domainString, problemString);
-
+      return plannerPlan;
     }
   }
 

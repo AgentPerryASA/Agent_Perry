@@ -1,6 +1,7 @@
 /** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
+import { start } from "repl";
 import { Agent } from "./agent.js";
 import { Coordinates } from "./coordinates.js";
 import {
@@ -129,31 +130,77 @@ export class GoToPlan extends PlanBase {
       if (blockPoint) {
         //Check whether the blockPoint is a 5 or 5! tile: in such case, a crate is present and the planner need to be invoked. The planner need to guide the agent until the next cell in the already existent path that is not a 5 or 5! tile.
         let coordinates = new Coordinates(blockPoint.x,blockPoint.y)
-        console.log("blocked at ",blockPoint.x,blockPoint.y)
         if(this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
+          console.log("-- PREV plan --\n");
+          for(const p of path) {
+            console.log(p.x, " ", p.y);
+          }
           let endPoint = blockPoint;
-          let startPoint = 0;
+          let startPointPositionInPath = 0;
+          let endPointPositionInPath = 0;
           //Recover position on the path
           for(const point of path) {
-            if(point.x==blockPoint.x && point.y==blockPoint.y) {
+            if(point.x==this.agent.internalBelief.me.coordinates.x && point.y==this.agent.internalBelief.me.coordinates.y) {
               break;
             }
-            startPoint+=1;
+            startPointPositionInPath+=1;
           }
-          path = path.slice(startPoint,path.length-1)
+
+          console.log("blocked at ",path[startPointPositionInPath].x,path[startPointPositionInPath].y)
+          path = path.slice(startPointPositionInPath,path.length)
+          console.log("-- SLICED plan --\n");
+          for(const p of path) {
+            console.log(p.x, " ", p.y);
+          }
           for(const point of path) {
             coordinates=new Coordinates(point.x,point.y)
-            if(!this.agent.internalBelief.tileMap.getYellowTile(coordinates)){
+            if(!this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
+              endPointPositionInPath+=1;
               endPoint=point;
-              break;
+              break
             }
           }
-          console.log("Try to go to",endPoint.x, endPoint.y)
-          await this.#pathFinder.searchWithPlanner(endPoint);
-        }
+          console.log("Reaching: ",endPoint.x,endPoint.y)
 
-        // Temporarily replace the position of the obstacle with a '0' tile
-        path = this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end, blockPoint);
+          if(path[0].x==endPoint.x && path[0].y==endPoint.y) {
+            // Temporarily replace the position of the obstacle with a '0' tile
+            path = this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end, blockPoint);
+          } else {
+            //Recover a plan from the planner
+            const plannerPlan = await this.#pathFinder.searchWithPlanner(endPoint);
+
+            if(plannerPlan) {
+              //Remove all nodes between the starting point and the destination
+              path = path.slice(endPointPositionInPath,path.length)
+              let newPath = [];
+
+              //First push the current position of the agent
+              newPath.push(new MapPoint({x: this.agent.internalBelief.me.coordinates.x,y: this.agent.internalBelief.me.coordinates.y,w: "test"}))
+
+              for(const step of plannerPlan) {
+                //Plan result slightly differs between a simple move and a moveCrate move: the first one includes the starting cell and the ending cell, the second also has the cell in which the crate will move to. In both case, the cell of interest is the second (position 1 in args array)
+                
+                //Extract x and y coordinates by removing TILE and the _ from the second element of args vector
+                const [x,y] = step.args[1].slice(4).split("_").map(Number);
+                
+                //TODO: consider
+                const mapPoint = new MapPoint({x,y,w: 'perry'})
+
+                newPath.push(mapPoint);
+              }
+              path = newPath.concat(path);
+            }
+            
+            console.log("-- NEXT plan --\n");
+            for(const p of path) {
+              console.log(p.x, " ", p.y);
+            }
+          }
+
+        } else {
+          // Temporarily replace the position of the obstacle with a '0' tile
+          path = this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end, blockPoint);
+        }
       }
 
       blockPoint = await this.#executePath(path)
