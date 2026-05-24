@@ -12,6 +12,41 @@ import {
 } from "./intention.js";
 import { PathFinder, MapPoint } from "./path_finder.js";
 
+class BlockPoint {
+  /**@type {MapPoint} */
+  #blockPoint;
+
+  /**@type {Number}*/
+  #indexOfPath;
+
+  /**@type {Boolean}*/
+  #isTileYellow;
+
+  /**
+   *
+   * @param {MapPoint} blockPoint
+   * @param {Number} indexOfPlan
+   * @param {Boolean} isTileYellow
+   */
+  constructor(blockPoint, indexOfPlan, isTileYellow) {
+    this.#blockPoint = blockPoint;
+    this.#indexOfPath = indexOfPlan;
+    this.#isTileYellow = isTileYellow;
+  }
+
+  get blockPoint() {
+    return this.#blockPoint;
+  }
+
+  get indexOfPath() {
+    return this.#indexOfPath;
+  }
+
+  get isTileYellow() {
+    return this.#isTileYellow;
+  }
+}
+
 class PlanBase {
   #agent;
   /** @type { Plan | undefined } */
@@ -93,7 +128,7 @@ class PlanBase {
 
 export class GoToPlan extends PlanBase {
   #pathFinder;
-  #MAX_MOVE_ATTEMPTS = 10
+  #MAX_MOVE_ATTEMPTS = 10;
   #moveAttemptCount;
 
   /**
@@ -102,7 +137,9 @@ export class GoToPlan extends PlanBase {
   constructor(agent) {
     super(agent);
 
-    this.#pathFinder = new PathFinder(this.agent.internalBelief.tileMap.tiles, this.agent);
+    this.#pathFinder = agent.internalBelief.pathFinder
+      ? agent.internalBelief.pathFinder
+      : new PathFinder(this.agent.internalBelief.tileMap.tiles);
     this.#moveAttemptCount = 0;
   }
 
@@ -122,88 +159,87 @@ export class GoToPlan extends PlanBase {
 
     const end = intention.destinationCoordinates;
     let blockPoint;
-    let path = intention.path ?
-      intention.path :  // Use the path pre-computed by the intention, if available ...
-      this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end)  // ... otherwise search a path
+    let path = intention.path
+      ? intention.path // Use the path pre-computed by the intention, if available ...
+      : this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end); // ... otherwise search a path
 
     do {
       if (blockPoint) {
         //Check whether the blockPoint is a 5 or 5! tile: in such case, a crate is present and the planner need to be invoked. The planner need to guide the agent until the next cell in the already existent path that is not a 5 or 5! tile.
-        let coordinates = new Coordinates(blockPoint.x,blockPoint.y)
-        if(this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
-          console.log("-- PREV plan --\n");
-          for(const p of path) {
-            console.log(p.x, " ", p.y);
-          }
-          let endPoint = blockPoint;
-          let startPointPositionInPath = 0;
+        if (blockPoint.isTileYellow) {
+          let endPoint = blockPoint.blockPoint;
           let endPointPositionInPath = 0;
-          //Recover position on the path
-          for(const point of path) {
-            if(point.x==this.agent.internalBelief.me.coordinates.x && point.y==this.agent.internalBelief.me.coordinates.y) {
+
+          //Remove all part of the path no longer necessary (the one util the current position). Notice that blockPoint does not return the current position, but the tile that was not reached
+          path = path.slice(blockPoint.indexOfPath - 1, path.length);
+
+          //Select what tile to reach: currently, the first non-yellow tile is the new destination, after that, all works as was previously decided
+          for (const point of path) {
+            const coordinates = new Coordinates(point.x, point.y);
+            if (!this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
+              endPointPositionInPath += 1;
+              endPoint = point;
               break;
             }
-            startPointPositionInPath+=1;
           }
 
-          console.log("blocked at ",path[startPointPositionInPath].x,path[startPointPositionInPath].y)
-          path = path.slice(startPointPositionInPath,path.length)
-          console.log("-- SLICED plan --\n");
-          for(const p of path) {
-            console.log(p.x, " ", p.y);
-          }
-          for(const point of path) {
-            coordinates=new Coordinates(point.x,point.y)
-            if(!this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
-              endPointPositionInPath+=1;
-              endPoint=point;
-              break
-            }
-          }
-          console.log("Reaching: ",endPoint.x,endPoint.y)
-
-          if(path[0].x==endPoint.x && path[0].y==endPoint.y) {
+          //If the endPoint is the current cell, don't use the planner, calculate a new path obscuring the tile that is causing problems
+          if (path[0].x == endPoint.x && path[0].y == endPoint.y) {
             // Temporarily replace the position of the obstacle with a '0' tile
-            path = this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end, blockPoint);
+            path = this.#pathFinder.search(
+              this.agent.internalBelief.me.coordinates,
+              end,
+              blockPoint.blockPoint,
+            );
           } else {
             //Recover a plan from the planner
-            const plannerPlan = await this.#pathFinder.searchWithPlanner(endPoint);
+            const plannerPlan = await this.#pathFinder.searchWithPlanner(
+              this.agent.internalBelief.getBeliefForPlanner(),
+              endPoint,
+            );
 
-            if(plannerPlan) {
-              //Remove all nodes between the starting point and the destination
-              path = path.slice(endPointPositionInPath,path.length)
-              let newPath = [];
+            if (plannerPlan) {
+              //Recover all tile from endPoint to the end of the previous path
+              path = path.slice(endPointPositionInPath, path.length);
 
-              //First push the current position of the agent
-              newPath.push(new MapPoint({x: this.agent.internalBelief.me.coordinates.x,y: this.agent.internalBelief.me.coordinates.y,w: "test"}))
+              const newPath = [];
 
-              for(const step of plannerPlan) {
+              //First push the current position of the agent (executePath start from item 1 of the list and not 0)
+              newPath.push(
+                new MapPoint({
+                  x: this.agent.internalBelief.me.coordinates.x,
+                  y: this.agent.internalBelief.me.coordinates.y,
+                  w: "perry",
+                }),
+              );
+
+              for (const step of plannerPlan) {
                 //Plan result slightly differs between a simple move and a moveCrate move: the first one includes the starting cell and the ending cell, the second also has the cell in which the crate will move to. In both case, the cell of interest is the second (position 1 in args array)
-                
-                //Extract x and y coordinates by removing TILE and the _ from the second element of args vector
-                const [x,y] = step.args[1].slice(4).split("_").map(Number);
-                
-                //TODO: consider
-                const mapPoint = new MapPoint({x,y,w: 'perry'})
 
+                //Extract x and y coordinates by removing TILE and the _ from the second element of args vector
+                const [x, y] = step.args[1].slice(4).split("_").map(Number);
+
+                const mapPoint = new MapPoint({ x, y, w: "perry" });
+
+                //Push the new tile to the array
                 newPath.push(mapPoint);
               }
+
+              //Join the new steps until the destination with the remaining part of the previous plan
               path = newPath.concat(path);
             }
-            
-            console.log("-- NEXT plan --\n");
-            for(const p of path) {
-              console.log(p.x, " ", p.y);
-            }
           }
-
         } else {
           // Temporarily replace the position of the obstacle with a '0' tile
-          path = this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end, blockPoint);
+          path = this.#pathFinder.search(
+            this.agent.internalBelief.me.coordinates,
+            end,
+            blockPoint.blockPoint,
+          );
         }
       }
 
-      blockPoint = await this.#executePath(path)
+      blockPoint = await this.#executePath(path);
 
       if (this.isStopped) {
         this.isRunning = false;
@@ -219,7 +255,7 @@ export class GoToPlan extends PlanBase {
 
   /**
    * @param {MapPoint[]} path
-  */
+   */
   async #executePath(path) {
     const a = this.agent.internalBelief.me;
     let i = 1;
@@ -264,15 +300,22 @@ export class GoToPlan extends PlanBase {
 
       if (!movedHorizontally && !movedVertically) {
         // Agent did not move
-        console.log("FAIL", movedHorizontally, movedVertically)
+        console.log("FAIL", movedHorizontally, movedVertically);
+
+        let coordinates = new Coordinates(step.x, step.y);
+
+        if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
+          //Stop the execution immediately if the blocking tile is a yellow one
+          return new BlockPoint(step, i, true);
+        }
 
         if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
           // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
-          return step;
+          return new BlockPoint(step, i, false);
         }
 
         // Wait for next attempt of move, otherwise the server disconnect you
-        await new Promise(res => setTimeout(res, 50));
+        await new Promise((res) => setTimeout(res, 50));
       } else {
         // Agent moved
         this.#moveAttemptCount = 0;
@@ -284,7 +327,7 @@ export class GoToPlan extends PlanBase {
   }
 
   /**
-   * @param {Plan} plan 
+   * @param {Plan} plan
    */
   static isTypeOf(plan) {
     return plan instanceof this;
@@ -328,7 +371,7 @@ export class GoPickUpPlan extends PlanBase {
   }
 
   /**
-   * @param {Plan} plan 
+   * @param {Plan} plan
    */
   static isTypeOf(plan) {
     return plan instanceof this;
@@ -340,7 +383,7 @@ export class GoPutDownPlan extends PlanBase {
   #pathFromDeviation;
 
   /**
-   * @param {MapPoint[] | undefined} value 
+   * @param {MapPoint[] | undefined} value
    */
   set pathFromDeviation(value) {
     this.#pathFromDeviation = value;
@@ -360,7 +403,9 @@ export class GoPutDownPlan extends PlanBase {
     this.isRunning = true;
     this.isStopped = false;
 
-    const path = this.#pathFromDeviation ? this.#pathFromDeviation : intention.path;
+    const path = this.#pathFromDeviation
+      ? this.#pathFromDeviation
+      : intention.path;
     const subIntention = new GoToIntention(intention.deliveryCoordinates, path);
 
     const isCompleted = await this.achieveSubIntention(subIntention);
@@ -384,7 +429,7 @@ export class GoPutDownPlan extends PlanBase {
   }
 
   /**
-   * @param {Plan} plan 
+   * @param {Plan} plan
    */
   static isTypeOf(plan) {
     return plan instanceof this;
@@ -397,10 +442,10 @@ export class DeviateAndPickUpPlan extends PlanBase {
   #pathFromParcelToTarget;
 
   /**
-   * @param {Agent} agent 
+   * @param {Agent} agent
    */
   constructor(agent) {
-    super(agent)
+    super(agent);
     // TODO: expose pathfinder from beliefs (goto too)
     this.#pathFinder = this.agent.internalBelief.pathFinder;
   }
@@ -427,8 +472,11 @@ export class DeviateAndPickUpPlan extends PlanBase {
 
     // Compute in advance the path from parcel to target
     setTimeout(() => {
-      if(this.#pathFinder) {
-        this.#pathFromParcelToTarget = this.#pathFinder.search(intention.parcelCoordinates, intention.targetCoordinates)
+      if (this.#pathFinder) {
+        this.#pathFromParcelToTarget = this.#pathFinder.search(
+          intention.parcelCoordinates,
+          intention.targetCoordinates,
+        );
       }
     }, 0);
 
@@ -446,7 +494,7 @@ export class DeviateAndPickUpPlan extends PlanBase {
   }
 
   /**
-   * @param {Plan} plan 
+   * @param {Plan} plan
    */
   static isTypeOf(plan) {
     return plan instanceof this;

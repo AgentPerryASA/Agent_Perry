@@ -303,10 +303,10 @@ export class Beliefs {
         const newReward =
           currentParcelFromBelief.cumulatedTime >= this.#parcelDecayTimerValue
             ? currentParcelFromBelief.parcel.reward -
-            Math.floor(
-              currentParcelFromBelief.cumulatedTime /
-              this.#parcelDecayTimerValue,
-            )
+              Math.floor(
+                currentParcelFromBelief.cumulatedTime /
+                  this.#parcelDecayTimerValue,
+              )
             : currentParcelFromBelief.parcel.reward;
 
         if (newReward < this.#parcelMinScore) {
@@ -470,7 +470,7 @@ export class Beliefs {
     }
 
     // Retrieve paths from greens to reds and vice versa
-    this.#pathFinder = new PathFinder(this.tileMap.tiles, undefined);
+    this.#pathFinder = new PathFinder(this.tileMap.tiles);
     for (const green of this.tileMap.greenTiles) {
       for (const red of this.tileMap.redTiles) {
         const path = this.#pathFinder.search(

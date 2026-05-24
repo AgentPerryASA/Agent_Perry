@@ -3,17 +3,33 @@ import path from "path";
 import fs from "fs";
 import { Agent } from "./agent.js";
 
+/**
+ *
+ * @param {string} filePath
+ */
+async function readFile(filePath) {
+  const file = await new Promise((res, rej) => {
+    fs.readFile(filePath, "utf8", (err, data) => {
+      if (err) rej(err);
+      else res(data);
+    });
+  });
+
+  return file ? file : "";
+}
+
 export class PathFinder {
   #algorithm;
-  #agent;
+
+  /**@type {String | undefined}*/
+  #pddlDomainString;
 
   /**
    * @param {string[][]} map A column-wise matrix, so map[x][y] returns cell (x, y)
-   * @param {Agent | undefined} agent
    */
-  constructor(map, agent) {
+  constructor(map) {
     this.#algorithm = new Astar(map);
-    this.#agent = agent;
+    this.#pddlDomainString = undefined;
   }
 
   /**
@@ -26,39 +42,37 @@ export class PathFinder {
   }
 
   /**
-   *
+   * @param {Beliefset} beliefSet
    * @param {MapPoint} end
    */
-  async searchWithPlanner(end) {
-    if (this.#agent) {
-      //Get belief already prepared for the planner
-      const bs = this.#agent.internalBelief.getBeliefForPlanner();
+  async searchWithPlanner(beliefSet, end) {
+    //Get belief already prepared for the planner
+    const bs = beliefSet;
 
-      //Build the pddl problem and convert it to string
-      const pddlProblem = new PddlProblem(
-        `Travel to tile${end.x}_${end.y}`,
-        bs.objects.join(" "),
-        bs.toPddlString(),
-        `perry tile${end.x}_${end.y}`,
-      );
-      const problemString = pddlProblem.toPddlString();
+    //Build the pddl problem and convert it to string
+    const pddlProblem = new PddlProblem(
+      `Travel to tile${end.x}_${end.y}`,
+      bs.objects.join(" "),
+      bs.toPddlString(),
+      `perry tile${end.x}_${end.y}`,
+    );
+    const problemString = pddlProblem.toPddlString();
 
+    if (!this.#pddlDomainString) {
       //Recover domain file
       const __filename = path.resolve(process.argv[1]);
       const __dirname = path.dirname(__filename);
-
       const filePath = path.join(__dirname, "./src/planner/domain.pddl");
-
-      const domainString = await new Promise((res, rej) => {
-        fs.readFile(filePath, "utf8", (err, data) => {
-          if (err) rej(err);
-          else res(data);
-        });
-      });
-      const plannerPlan = await onlineSolver(domainString, problemString);
-
-      return plannerPlan;
+      this.#pddlDomainString = await readFile(filePath);
     }
+
+    const plannerPlan = await onlineSolver(
+      //@ts-ignore: cannot be undefined because check is performed just before this instruction. At worst is empty.
+      this.#pddlDomainString,
+      problemString,
+    );
+
+    return plannerPlan;
   }
 
   /**
