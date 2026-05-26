@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { BDIAgent } from './src/bdi_agent.js';
 import { LLMAgent } from './src/llm_agent.js';
+import { Admin as Admin } from './src/admin.js';
 
 const token1 = process.env.TOKEN1;
 const token2 = process.env.TOKEN2;
@@ -19,25 +20,27 @@ const a2 = new BDIAgent(token2);
 
 const llm = new LLMAgent(token1);
 
+const server = new Admin();
+
 async function f() {
   await new Promise(res => setTimeout(res, 2000))
 
   console.log()
-  llm.sendToAgent()
+  // llm.sendToAgent()
 
-  await new Promise(res => setTimeout(res, 2000))
+  // await new Promise(res => setTimeout(res, 2000))
 
-  console.log()
-  a1.sendToLLM()
+  // console.log()
+  // a1.sendToLLM()
 
-  await new Promise(res => setTimeout(res, 2000))
+  // await new Promise(res => setTimeout(res, 2000))
 
-  console.log()
-  a1.sendToMate()
+  // console.log()
+  // a1.sendToMate()
 
-  await new Promise(res => setTimeout(res, 2000))
+  // await new Promise(res => setTimeout(res, 2000))
 
-  console.log()
-  a2.sendToMate()
+  // console.log()
+  // a2.sendToMate()
 }
-f()
+// f()

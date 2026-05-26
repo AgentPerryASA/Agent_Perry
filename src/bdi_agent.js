@@ -1,6 +1,7 @@
 /** @typedef IOParcel @type { import("@unitn-asa/deliveroo-js-sdk/server").IOParcel } */
 /** @typedef Plan @type { import('./plan.js').Plan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
+/** @typedef Message @type { import("./message.js").Message } */
 
 import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
@@ -8,7 +9,7 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs, TargetTile } from "./belief.js"
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js"
-import { Message } from './message.js';
+import { HandshakeMessage, ActionMessage, MessageType, BDIRespondeMessage } from './message.js';
 
 export class BDIAgent {
   #socket;
@@ -87,8 +88,7 @@ export class BDIAgent {
       });
     }));
 
-    // @ts-ignore
-    this.#socket.onMsg((id, name, msg) => this.onMsg(id, name, msg));
+    this.#socket.onMsg((id, name, msg) => this.#onMsg(id, name, msg));
     // Ask the handshake to the team mate
     this.#handshake();
 
@@ -116,37 +116,66 @@ export class BDIAgent {
       process.exit(1);
     }
 
-    this.#socket.emitShout(new Message(handshakeMsg, true));
+    this.#socket.emitShout(new HandshakeMessage({ content: handshakeMsg, handshake: true }));
   }
 
   /**
    * @param {string} id 
    * @param {string} name 
-   * @param {Message} msg 
+   * @param {{}} message
    */
-  async onMsg(id, name, msg) {
-    if (msg.handshake && msg.content == process.env.HANDSHAKE_MSG) {
-      this.#internalBelief.mateId = id;
-      console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`)
-      return;
+  async #onMsg(id, name, message) {
+    let msg;
+
+    // @ts-ignore
+    switch (message.type) {
+      case MessageType.HandshakeMessage:
+        // @ts-ignore
+        msg = new HandshakeMessage(message)
+        if (msg.handshake && msg.content == process.env.HANDSHAKE_MSG) {
+          this.#internalBelief.mateId = id;
+          // console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`)
+        }
+        break;
+      case MessageType.ActionMessage:
+        // The message is from the LLM agent
+        // @ts-ignore
+        msg = new ActionMessage(message);
+        console.log(`${this.#internalBelief.me.name} received (${msg.action}, ${msg.actionInput}) from LLM`)
+
+        // this.#sendToMate(`Do (${msg.action}, ${msg.actionInput})`);
+        const response = new BDIRespondeMessage({ content: "No thanks" });
+        this.#sendToLLM(response);
+        break;
+      default:
+        msg = String(message);
+        if (msg) {
+          console.log(`${this.#internalBelief.me.name} received ${msg} from ${name}`)
+        }
     }
 
-    console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received "${msg.content}" from ${name}`)
+    // console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received "${msg.content}" from ${name}`)
   }
 
-  sendToLLM() {
+  /**
+   * @param {Message} message 
+   */
+  #sendToLLM(message) {
     this.#socket.emitSay(
       // NOTE: The BDI agent is not programmed to receive messages from itself,
       // so this will be received only by the LLM if associated to this agent
       this.#internalBelief.me.id,
-      new Message(`Test message`)
+      message
     )
   }
 
-  sendToMate() {
+  /**
+   * @param {Message} message 
+   */
+  #sendToMate(message) {
     this.#socket.emitSay(
       this.#internalBelief.mateId,
-      new Message(`Test message`)
+      message
     )
   }
 
