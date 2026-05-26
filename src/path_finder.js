@@ -246,12 +246,15 @@ export class MapPoint {
   #neighbors; // neighbors of the current map point
   /** @type { MapPoint | undefined } */
   parent; // immediate source of the current map point
+  /**@type {Boolean} */
+  insertedByPlanner;
 
   /**
    *
    * @param {{x:number, y:number, w:string}} point
+   * @param {Boolean} insertedByPlanner
    */
-  constructor(point) {
+  constructor(point, insertedByPlanner = false) {
     this.#x = point.x;
     this.#y = point.y;
     this.#w = point.w;
@@ -259,6 +262,7 @@ export class MapPoint {
     this.g = 0;
     this.h = 0;
     this.#neighbors = [];
+    this.insertedByPlanner = insertedByPlanner;
   }
 
   get x() {

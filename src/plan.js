@@ -173,6 +173,7 @@ export class GoToPlan extends PlanBase {
     do {
       if (blockPoint) {
         //Check whether the blockPoint is a 5 or 5! tile: in such case, a crate is present and the planner need to be invoked. The planner need to guide the agent until the next cell in the already existent path that is not a 5 or 5! tile.
+        let wasPlannerUsed = false;
         if (blockPoint.isTileYellow) {
 
           const subIntention = new DeviateUsingPlannerIntention(path, blockPoint.indexOfPath - 1);
@@ -191,11 +192,15 @@ export class GoToPlan extends PlanBase {
             const subPlan = this.subPlan;
             if (subPlan.path) {
               path = subPlan.path;
+              wasPlannerUsed = true;
             }
           }
 
-        } else {
+        }
+
+        if (!wasPlannerUsed) {
           // Temporarily replace the position of the obstacle with a '0' tile
+          // This will be done also in case the planner didn't found a plan because the starting and ending tiles were the same
           const subIntention = new DeviateUsingAStarIntention(end, blockPoint.blockPoint);
 
           const isCompleted = await this.achieveSubIntention(subIntention);
@@ -246,6 +251,13 @@ export class GoToPlan extends PlanBase {
 
       const step = path[i];
 
+      let coordinates = new Coordinates(step.x, step.y);
+
+      if (!step.insertedByPlanner && this.agent.internalBelief.tileMap.getYellowTile(coordinates) && this.agent.internalBelief.isTileWithCrate(coordinates)) {
+        //Stop the execution immediately if the tile was not set by the planner, it is yellow and has a crate over it: this avoid calling the planner if the tile is yellow but no crate are on it, therefore it is a walkable tile
+        return new BlockPoint(step, i, true);
+      }
+
       this.#moveAttemptCount++;
 
       let movedHorizontally;
@@ -280,10 +292,8 @@ export class GoToPlan extends PlanBase {
         // Agent did not move
         console.log("FAIL", movedHorizontally, movedVertically);
 
-        let coordinates = new Coordinates(step.x, step.y);
-
         if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
-          //Stop the execution immediately if the blocking tile is a yellow one
+          //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
           return new BlockPoint(step, i, true);
         }
 
@@ -419,34 +429,9 @@ export class DeviateUsingPlannerPlan extends PlanBase {
     }
 
     if (path[0].x == endPoint.x && path[0].y == endPoint.y) {
-      // Temporarily replace the position of the obstacle with a '0' tile and calculate an alternative with A* when the start and ending position match
-      const endPointCoordinates = new Coordinates(intention.currentPath[intention.currentPath.length - 1].x, intention.currentPath[intention.currentPath.length - 1].y);
 
-      const subIntention = new DeviateUsingAStarIntention(
-        endPointCoordinates,
-        intention.currentPath[stopPointIndexInPath + 1]
-      );
-
-      const isCompleted = await this.achieveSubIntention(subIntention);
-
-      if (!isCompleted) {
-        // The sub-intention was stopped
-        this.isStopped = true;
-        this.isRunning = false;
-        return false;
-      }
-
-      if (this.isStopped) {
-        this.isRunning = false;
-        return;
-      }
-
-      if (this.subPlan && DeviateUsingAStarPlan.isTypeOf(this.subPlan)) {
-        /**@type {DeviateUsingAStarPlan} */
-        const subPlan = this.subPlan;
-        this.#path = subPlan.path;
-        return true;
-      }
+      this.#path = undefined;
+      return true;
 
     } else if (pathFinder) {
       //Recover a plan from the planner
@@ -470,7 +455,7 @@ export class DeviateUsingPlannerPlan extends PlanBase {
             x: this.agent.internalBelief.me.coordinates.x,
             y: this.agent.internalBelief.me.coordinates.y,
             w: "perry",
-          }),
+          }, true),
         );
 
         for (const step of plannerPlan) {
@@ -479,7 +464,7 @@ export class DeviateUsingPlannerPlan extends PlanBase {
           //Extract x and y coordinates by removing TILE and the _ from the second element of args vector
           const [x, y] = step.args[1].slice(4).split("_").map(Number);
 
-          const mapPoint = new MapPoint({ x, y, w: "perry" });
+          const mapPoint = new MapPoint({ x, y, w: "perry" }, true);
 
           //Push the new tile to the array
           newPath.push(mapPoint);

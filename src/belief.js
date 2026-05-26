@@ -567,6 +567,19 @@ export class Beliefs {
     }
   }
 
+  /**
+   * @param {Coordinates} tileCoordinates 
+   */
+  isTileWithCrate(tileCoordinates) {
+    for (const [_, tile] of this.#tileWithCrateMap) {
+      if (tileCoordinates.x == tile.x && tileCoordinates.y == tile.y) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   getBeliefForPlanner() {
     //At start, all is set with the corresponding position. notCrate and crate are added here, when map has to be returned. Same for perry position.
 
@@ -580,7 +593,6 @@ export class Beliefs {
     const cratePositionList = [];
     for (const [_, c] of this.#tileWithCrateMap) {
       plannerBeliefs.declare(`crate tile${c.x}_${c.y}`);
-      console.log("pushed ", c);
       cratePositionList.push(c);
     }
 
