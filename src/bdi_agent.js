@@ -110,13 +110,13 @@ export class BDIAgent {
   }
 
   async #handshake() {
-    const handshakeMsg = process.env.HANDSHAKE_MSG;
-    if (!handshakeMsg) {
-      console.error("Error: missing HANDSHAKE_MSG in .env file");
+    const handshakeKey = process.env.HANDSHAKE_KEY;
+    if (!handshakeKey) {
+      console.error("Error: missing HANDSHAKE_KEY in .env file");
       process.exit(1);
     }
 
-    this.#socket.emitShout(new HandshakeMessage({ content: handshakeMsg, handshake: true }));
+    this.#socket.emitShout(new HandshakeMessage({ key: handshakeKey }));
   }
 
   /**
@@ -132,7 +132,7 @@ export class BDIAgent {
       case MessageType.HandshakeMessage:
         // @ts-ignore
         msg = new HandshakeMessage(message)
-        if (msg.handshake && msg.content == process.env.HANDSHAKE_MSG) {
+        if (msg.key == process.env.HANDSHAKE_KEY) {
           this.#internalBelief.mateId = id;
           // console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`)
         }

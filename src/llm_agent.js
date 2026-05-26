@@ -3,7 +3,7 @@
 import "dotenv/config";
 import OpenAI from "openai";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk";
-import { ActionMessage, BDIRespondeMessage, HandshakeMessage, MessageType } from "./message.js";
+import { ActionMessage, BDIRespondeMessage, MessageType } from "./message.js";
 
 export class LLMAgent {
   #socket;

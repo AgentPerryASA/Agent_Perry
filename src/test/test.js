@@ -1,6 +1,7 @@
 import 'dotenv/config';
-import { BDIAgent } from './src/bdi_agent.js';
-import { LLMAgent } from './src/llm_agent.js';
+import { BDIAgent } from '../bdi_agent.js';
+import { LLMAgent } from '../llm_agent.js';
+import { Admin } from './admin.js';
 
 const token1 = process.env.TOKEN1;
 const token2 = process.env.TOKEN2;
@@ -18,3 +19,5 @@ new BDIAgent(token1);
 new BDIAgent(token2);
 
 new LLMAgent(token1);
+
+new Admin();

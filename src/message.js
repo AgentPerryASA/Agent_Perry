@@ -8,16 +8,14 @@ export const MessageType = {
 
 export class HandshakeMessage {
   type;
-  content;
-  handshake;
+  key;
 
   /**
-   * @param {{content: string, handshake: boolean}} message
+   * @param {{key: string}} message
    */
-  constructor({ content, handshake = false }) {
+  constructor({ key }) {
     this.type = MessageType.HandshakeMessage;
-    this.content = content;
-    this.handshake = handshake;
+    this.key = key;
   }
 }
 
