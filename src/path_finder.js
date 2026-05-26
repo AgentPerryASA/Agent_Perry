@@ -207,7 +207,7 @@ class Astar {
    * @param {boolean} resetAfterTimeout
    */
   #ignorePoint(point, resetAfterTimeout) {
-    // Update the neighbors of the point so that they ignore it, namely do not put the point as thier neighbor
+    // Update the neighbors of the point so that they ignore it, namely do not put the point as their neighbor
     for (const neighbor of point.neighbors) {
       neighbor.updateNeighbors(this.#map, point);
     }

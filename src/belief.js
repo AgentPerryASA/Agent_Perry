@@ -303,10 +303,10 @@ export class Beliefs {
         const newReward =
           currentParcelFromBelief.cumulatedTime >= this.#parcelDecayTimerValue
             ? currentParcelFromBelief.parcel.reward -
-              Math.floor(
-                currentParcelFromBelief.cumulatedTime /
-                  this.#parcelDecayTimerValue,
-              )
+            Math.floor(
+              currentParcelFromBelief.cumulatedTime /
+              this.#parcelDecayTimerValue,
+            )
             : currentParcelFromBelief.parcel.reward;
 
         if (newReward < this.#parcelMinScore) {

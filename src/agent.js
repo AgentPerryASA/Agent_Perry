@@ -6,13 +6,13 @@ import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
-import { Beliefs, TargetTile } from "./belief.js"
-import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js"
+import { Beliefs, TargetTile } from "./belief.js";
+import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan } from "./plan.js";
 
 export class Agent {
   #socket;
   // TODO: TEO -> belief
-  /**@type {(typeof GoToPlan | typeof GoPickUpPlan | typeof GoPutDownPlan | typeof DeviateAndPickUpPlan)[]}*/
+  /**@type {(typeof GoToPlan | typeof GoPickUpPlan | typeof GoPutDownPlan | typeof DeviateAndPickUpPlan | typeof DeviateUsingAStarPlan | typeof DeviateUsingPlannerPlan)[]}*/
   #planLibrary;
   /** @type { {intention: Intention, plan: Plan}[] } */
   #intentionPlanQueue;
@@ -24,7 +24,7 @@ export class Agent {
   #internalBelief;
 
   constructor() {
-    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan];
+    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan];
     this.#intentionPlanQueue = [];
     this.#internalBelief = new Beliefs();
     this.#socket = DjsConnect();
@@ -60,7 +60,7 @@ export class Agent {
     // Store relevant map configuration
     promiseList.push(new Promise(resolve => {
       this.#socket.onConfig(config => {
-        this.#internalBelief.updateGameConfiguration(config)
+        this.#internalBelief.updateGameConfiguration(config);
 
         resolve(true);
       });
@@ -90,7 +90,7 @@ export class Agent {
 
       // Keep track of parcels around us
       this.#socket.onSensing(async sensing => {
-        this.#internalBelief.reviseParcelList(sensing.parcels)
+        this.#internalBelief.reviseParcelList(sensing.parcels);
         this.#internalBelief.reviseCarriedParcelList(sensing.parcels);
         this.#internalBelief.updateNearAgentList(sensing.agents);
         this.#internalBelief.updateTileWithCrate(sensing.crates);
@@ -99,8 +99,8 @@ export class Agent {
       // Constantly generate the best intention based on our sensing
       setInterval(async () => {
         await this.#generateBestIntention();
-      }, 100)
-    })
+      }, 100);
+    });
   }
 
   async #generateBestIntention() {
@@ -253,7 +253,7 @@ export class Agent {
       }
 
       const oldPlan = this.#currentPlan;
-      this.#intentionPlanQueue.pop()
+      this.#intentionPlanQueue.pop();
 
       if (this.#currentIntention) {
         if (oldPlan && DeviateAndPickUpPlan.isTypeOf(oldPlan)) {
@@ -263,7 +263,7 @@ export class Agent {
           }
         }
 
-        await this.#achieveCurrentIntention()
+        await this.#achieveCurrentIntention();
       }
     }
   }
@@ -328,8 +328,8 @@ export class Agent {
 
   /** @type { function ({x:number, y:number}, {x:number, y:number}): number } */
   #distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
-    const dx = Math.abs(Math.round(x1) - Math.round(x2))
-    const dy = Math.abs(Math.round(y1) - Math.round(y2))
+    const dx = Math.abs(Math.round(x1) - Math.round(x2));
+    const dy = Math.abs(Math.round(y1) - Math.round(y2));
     return dx + dy;
   }
 

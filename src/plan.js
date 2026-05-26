@@ -1,4 +1,4 @@
-/** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan } */
+/** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan | DeviateUsingAStarPlan | DeviateUsingPlannerPlan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
 import { start } from "repl";
@@ -9,6 +9,8 @@ import {
   GoToIntention,
   GoPutDownIntention,
   DeviateAndPickUpIntention,
+  DeviateUsingPlannerIntention,
+  DeviateUsingAStarIntention,
 } from "./intention.js";
 import { PathFinder, MapPoint } from "./path_finder.js";
 
@@ -84,6 +86,11 @@ class PlanBase {
     return this.#isRunning;
   }
 
+  get subPlan() {
+    const plan = this.#subPlan;
+    return plan;
+  }
+
   /**
    * @param {Intention} intention
    */
@@ -99,7 +106,7 @@ class PlanBase {
       // @ts-ignore
       const isCompleted = await this.#subPlan.execute(intention);
       if (isCompleted) {
-        this.#subPlan = undefined;
+        //this.#subPlan = undefined;
         return true;
       }
     }
@@ -167,75 +174,46 @@ export class GoToPlan extends PlanBase {
       if (blockPoint) {
         //Check whether the blockPoint is a 5 or 5! tile: in such case, a crate is present and the planner need to be invoked. The planner need to guide the agent until the next cell in the already existent path that is not a 5 or 5! tile.
         if (blockPoint.isTileYellow) {
-          let endPoint = blockPoint.blockPoint;
-          let endPointPositionInPath = 0;
 
-          //Remove all part of the path no longer necessary (the one util the current position). Notice that blockPoint does not return the current position, but the tile that was not reached
-          path = path.slice(blockPoint.indexOfPath - 1, path.length);
+          const subIntention = new DeviateUsingPlannerIntention(path, blockPoint.indexOfPath - 1);
 
-          //Select what tile to reach: currently, the first non-yellow tile is the new destination, after that, all works as was previously decided
-          for (const point of path) {
-            const coordinates = new Coordinates(point.x, point.y);
-            if (!this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
-              endPointPositionInPath += 1;
-              endPoint = point;
-              break;
+          const isCompleted = await this.achieveSubIntention(subIntention);
+
+          if (!isCompleted) {
+            // The sub-intention was stopped
+            this.isStopped = true;
+            this.isRunning = false;
+            return false;
+          }
+
+          if (this.subPlan && DeviateUsingPlannerPlan.isTypeOf(this.subPlan)) {
+            /**@type {DeviateUsingPlannerPlan}*/
+            const subPlan = this.subPlan;
+            if (subPlan.path) {
+              path = subPlan.path;
             }
           }
 
-          //If the endPoint is the current cell, don't use the planner, calculate a new path obscuring the tile that is causing problems
-          if (path[0].x == endPoint.x && path[0].y == endPoint.y) {
-            // Temporarily replace the position of the obstacle with a '0' tile
-            path = this.#pathFinder.search(
-              this.agent.internalBelief.me.coordinates,
-              end,
-              blockPoint.blockPoint,
-            );
-          } else {
-            //Recover a plan from the planner
-            const plannerPlan = await this.#pathFinder.searchWithPlanner(
-              this.agent.internalBelief.getBeliefForPlanner(),
-              endPoint,
-            );
-
-            if (plannerPlan) {
-              //Recover all tile from endPoint to the end of the previous path
-              path = path.slice(endPointPositionInPath, path.length);
-
-              const newPath = [];
-
-              //First push the current position of the agent (executePath start from item 1 of the list and not 0)
-              newPath.push(
-                new MapPoint({
-                  x: this.agent.internalBelief.me.coordinates.x,
-                  y: this.agent.internalBelief.me.coordinates.y,
-                  w: "perry",
-                }),
-              );
-
-              for (const step of plannerPlan) {
-                //Plan result slightly differs between a simple move and a moveCrate move: the first one includes the starting cell and the ending cell, the second also has the cell in which the crate will move to. In both case, the cell of interest is the second (position 1 in args array)
-
-                //Extract x and y coordinates by removing TILE and the _ from the second element of args vector
-                const [x, y] = step.args[1].slice(4).split("_").map(Number);
-
-                const mapPoint = new MapPoint({ x, y, w: "perry" });
-
-                //Push the new tile to the array
-                newPath.push(mapPoint);
-              }
-
-              //Join the new steps until the destination with the remaining part of the previous plan
-              path = newPath.concat(path);
-            }
-          }
         } else {
           // Temporarily replace the position of the obstacle with a '0' tile
-          path = this.#pathFinder.search(
-            this.agent.internalBelief.me.coordinates,
-            end,
-            blockPoint.blockPoint,
-          );
+          const subIntention = new DeviateUsingAStarIntention(end, blockPoint.blockPoint);
+
+          const isCompleted = await this.achieveSubIntention(subIntention);
+
+          if (!isCompleted) {
+            // The sub-intention was stopped
+            this.isStopped = true;
+            this.isRunning = false;
+            return false;
+          }
+
+          if (this.subPlan && DeviateUsingAStarPlan.isTypeOf(this.subPlan)) {
+            /**@type {DeviateUsingAStarPlan}*/
+            const subPlan = this.subPlan;
+            if (subPlan.path) {
+              path = subPlan.path;
+            }
+          }
         }
       }
 
@@ -332,6 +310,224 @@ export class GoToPlan extends PlanBase {
   static isTypeOf(plan) {
     return plan instanceof this;
   }
+}
+
+export class DeviateUsingAStarPlan extends PlanBase {
+
+  /**@type {MapPoint[] | undefined} */
+  #path;
+
+  /**
+   * @param {Agent} agent
+   */
+  constructor(agent) {
+    super(agent);
+  }
+
+  get path() {
+    return this.#path;
+  }
+
+  /**
+   * 
+   * @param {DeviateUsingAStarIntention} intention 
+   */
+  async execute(intention) {
+    const pathFinder = this.agent.internalBelief.pathFinder;
+    const agentCoordinates = this.agent.internalBelief.me.coordinates;
+    const endPointCoordinates = intention.endPointCoordinates;
+    const blockPoint = intention.blockPoint;
+
+    let result = undefined;
+
+    if (pathFinder) {
+      result = pathFinder.search(
+        agentCoordinates,
+        endPointCoordinates,
+        blockPoint,
+      );
+    }
+
+    this.#path = result;
+
+    return true;
+
+  }
+
+  /**
+   * @param {Intention} intention
+   */
+  static isApplicable(intention) {
+    return DeviateUsingAStarIntention.isTypeOf(intention);
+  }
+
+  /**
+   * @param {Plan} plan 
+   */
+  static isTypeOf(plan) {
+    return plan instanceof this;
+  }
+
+}
+
+export class DeviateUsingPlannerPlan extends PlanBase {
+  /**@type {MapPoint[] | undefined} */
+  #path;
+
+  /**
+   * @param {Agent} agent
+   */
+  constructor(agent) {
+    super(agent);
+  }
+
+  get path() {
+    return this.#path;
+  }
+
+  /**
+   * 
+   * @param {DeviateUsingPlannerIntention} intention 
+   */
+  async execute(intention) {
+    this.isRunning = true;
+    this.isStopped = false;
+
+    const beliefSet = this.agent.internalBelief.getBeliefForPlanner();
+    const stopPointIndexInPath = intention.stopPointIndexInPath;
+    const pathFinder = this.agent.internalBelief.pathFinder;
+    let path = intention.currentPath;
+    let endPoint = new MapPoint({ x: 0, y: 0, w: "perry" });
+    let endPointPositionInPath = 0;
+
+    //Remove all part of the path no longer necessary (the one util the current position). Notice that blockPoint does not return the current position, but the tile that was not reached
+    path = path.slice(stopPointIndexInPath, path.length);
+
+    //Select what tile to reach: currently, the first non-yellow tile is the new destination, after that, all works as was previously decided
+    for (const point of path) {
+      const coordinates = new Coordinates(point.x, point.y);
+      if (!this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
+        endPointPositionInPath += 1;
+        endPoint = point;
+        break;
+      }
+    }
+
+    if (this.isStopped) {
+      this.isRunning = false;
+      return;
+    }
+
+    if (path[0].x == endPoint.x && path[0].y == endPoint.y) {
+      // Temporarily replace the position of the obstacle with a '0' tile and calculate an alternative with A* when the start and ending position match
+      const endPointCoordinates = new Coordinates(intention.currentPath[intention.currentPath.length - 1].x, intention.currentPath[intention.currentPath.length - 1].y);
+
+      const subIntention = new DeviateUsingAStarIntention(
+        endPointCoordinates,
+        intention.currentPath[stopPointIndexInPath + 1]
+      );
+
+      const isCompleted = await this.achieveSubIntention(subIntention);
+
+      if (!isCompleted) {
+        // The sub-intention was stopped
+        this.isStopped = true;
+        this.isRunning = false;
+        return false;
+      }
+
+      if (this.isStopped) {
+        this.isRunning = false;
+        return;
+      }
+
+      if (this.subPlan && DeviateUsingAStarPlan.isTypeOf(this.subPlan)) {
+        /**@type {DeviateUsingAStarPlan} */
+        const subPlan = this.subPlan;
+        this.#path = subPlan.path;
+        return true;
+      }
+
+    } else if (pathFinder) {
+      //Recover a plan from the planner
+      const plannerPlan = await pathFinder.searchWithPlanner(beliefSet, endPoint);
+
+      if (plannerPlan) {
+
+        if (this.isStopped) {
+          this.isRunning = false;
+          return;
+        }
+
+        //Recover all tile from endPoint to the end of the previous path
+        path = path.slice(endPointPositionInPath, path.length);
+
+        const newPath = [];
+
+        //First push the current position of the agent (executePath start from item 1 of the list and not 0)
+        newPath.push(
+          new MapPoint({
+            x: this.agent.internalBelief.me.coordinates.x,
+            y: this.agent.internalBelief.me.coordinates.y,
+            w: "perry",
+          }),
+        );
+
+        for (const step of plannerPlan) {
+          //Plan result slightly differs between a simple move and a moveCrate move: the first one includes the starting cell and the ending cell, the second also has the cell in which the crate will move to. In both case, the cell of interest is the second (position 1 in args array)
+
+          //Extract x and y coordinates by removing TILE and the _ from the second element of args vector
+          const [x, y] = step.args[1].slice(4).split("_").map(Number);
+
+          const mapPoint = new MapPoint({ x, y, w: "perry" });
+
+          //Push the new tile to the array
+          newPath.push(mapPoint);
+        }
+
+        if (this.isStopped) {
+          this.isRunning = false;
+          return;
+        }
+
+        //Join the new steps until the destination with the remaining part of the previous plan
+        this.#path = newPath.concat(path);
+        return true;
+      } else {
+
+        if (this.isStopped) {
+          this.isRunning = false;
+          return;
+        }
+
+        //No plan found
+        return false;
+      }
+    } else {
+
+      if (this.isStopped) {
+        this.isRunning = false;
+        return;
+      }
+      //No pathFinder in agent
+      return false;
+    }
+  }
+
+  /**
+   * @param {Intention} intention
+   */
+  static isApplicable(intention) {
+    return DeviateUsingPlannerIntention.isTypeOf(intention);
+  }
+
+  /**
+   * @param {Plan} plan 
+   */
+  static isTypeOf(plan) {
+    return plan instanceof this;
+  }
+
 }
 
 export class GoPickUpPlan extends PlanBase {
