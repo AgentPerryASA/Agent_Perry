@@ -14,6 +14,32 @@ import {
 } from "./intention.js";
 import { PathFinder, MapPoint } from "./path_finder.js";
 
+class NearbyAgent {
+  /**@type {Boolean}*/
+  #nearbyAgentDetected;
+
+  /**@type {Number | undefined}*/
+  #aheadTileIndex;
+
+  /**
+   * 
+   * @param {Boolean} nearbyAgentDetected 
+   * @param {Number | undefined} aheadTileIndex 
+   */
+  constructor(nearbyAgentDetected, aheadTileIndex) {
+    this.#nearbyAgentDetected = nearbyAgentDetected;
+    this.#aheadTileIndex = aheadTileIndex;
+  }
+
+  get nearbyAgentDetected() {
+    return this.#nearbyAgentDetected;
+  }
+
+  get aheadTileIndex() {
+    return this.#aheadTileIndex;
+  }
+}
+
 class BlockPoint {
   /**@type {MapPoint} */
   #blockPoint;
@@ -138,6 +164,11 @@ export class GoToPlan extends PlanBase {
   #MAX_MOVE_ATTEMPTS = 10;
   #CELL_TO_CHECK_FOR_AGENTS = 4;
   #moveAttemptCount;
+  /**
+  * Map of alternative path. Id is String(tile.x)+String(tile.y). Contains the path or a promise
+  * @type {Map<String,Promise<MapPoint[]>>}
+  * */
+  #alternativePath;
 
   /**
    * @param {Agent} agent
@@ -149,6 +180,7 @@ export class GoToPlan extends PlanBase {
       ? agent.internalBelief.pathFinder
       : new PathFinder(this.agent.internalBelief.tileMap.tiles);
     this.#moveAttemptCount = 0;
+    this.#alternativePath = new Map();
   }
 
   /**
@@ -239,17 +271,82 @@ export class GoToPlan extends PlanBase {
   }
 
   /**
+   * @param {MapPoint[]} path 
+   * @param {Number} startIndex 
+   */
+  #searchNearbyAgent(path, startIndex) {
+    for (let i = startIndex; i < startIndex + this.#CELL_TO_CHECK_FOR_AGENTS; i += 1) {
+      if (i < path.length) {
+        const aheadTileCoordinates = new Coordinates(path[i].x, path[i].y);
+        if (this.agent.internalBelief.isTileWithAgent(aheadTileCoordinates)) {
+          return new NearbyAgent(true, i);
+        }
+      }
+    }
+
+    return new NearbyAgent(false, undefined);
+  }
+
+  /**
+  * @param {MapPoint[]} path
+  * @param {Number} aheadTileIndex
+  */
+  async #searchAndStoreDeviation(path, aheadTileIndex) {
+    //Retrieve the tile for which a deviation is needed
+    const aheadTile = path[aheadTileIndex];
+    const aheadTileCoordinatesToString = String(aheadTile.x) + String(aheadTile.y);
+
+    //Retrieve position when the deviation will be needed
+    const futureAgentPosition = path[aheadTileIndex - 1];
+    const futureAgentPositionCoordinates = new Coordinates(futureAgentPosition.x, futureAgentPosition.y);
+
+    //Retrieve the ending point
+    const endPoint = path[path.length - 1];
+    const endPointCoordinates = new Coordinates(endPoint.x, endPoint.y);
+
+    //Preparing list with all tiles to ignore: CELL_TO_CHECK_FOR_AGENTS tiles of the path after the blocked tile
+    const tilesToIgnoreList = [];
+    for (let i = 0; i < this.#CELL_TO_CHECK_FOR_AGENTS; i += 1) {
+
+      //Ignore selected tiles (except for the destination)
+      if (i + aheadTileIndex < path.length - 1) {
+
+        tilesToIgnoreList.push(path[i + aheadTileIndex]);
+
+      }
+
+    }
+
+    //Calculate deviation using A*
+    const subIntention = new DeviateUsingAStarIntention(endPointCoordinates, tilesToIgnoreList, futureAgentPositionCoordinates);
+
+    //Insert an entry to alternativePath: this signals that an alternative path is or will be available
+    const futurePromise = new Promise(res => {
+      this.achieveSubIntention(subIntention).then((result) => {
+
+        //Get a copy of the subPlan before it could be overwritten
+        const subPlan = /**@type {DeviateUsingAStarPlan} */(this.subPlan);
+
+        if (result && subPlan && subPlan.path) {
+          res(subPlan.path);
+        } else {
+          res([]);
+        }
+      });
+    });
+
+    //Wait 10 ms to allow safe storing of subPlan
+    await new Promise(res => setTimeout(res, 10));
+
+    this.#alternativePath.set(aheadTileCoordinatesToString, futurePromise);
+  }
+
+  /**
    * @param {MapPoint[]} path
    */
   async #executePath(path) {
     const a = this.agent.internalBelief.me;
     let i = 1;
-
-    /**
-     * Map of alternative path. Id is String(tile.x)+String(tile.y). Contains the path or a promise
-     * @type {Map<String,Promise<MapPoint[]>>}
-     * */
-    const alternativePath = new Map();
 
     while (i < path.length) {
       if (this.isStopped) {
@@ -262,156 +359,94 @@ export class GoToPlan extends PlanBase {
       let coordinates = new Coordinates(step.x, step.y);
 
       if (!step.insertedByPlanner && this.agent.internalBelief.tileMap.getYellowTile(coordinates) && this.agent.internalBelief.isTileWithCrate(coordinates)) {
-        //Stop the execution immediately if the tile was not set by the planner, it is yellow and has a crate over it: this avoid calling the planner if the tile is yellow but no crate are on it, therefore it is a walkable tile
+        //Stop the execution immediately if the tile was not set by the planner, it is yellow and has a crate over it: this avoid calling the planner if the tile is yellow but no crate are on it, therefore for it being a walkable tile
         return new BlockPoint(step, i, true);
       }
 
-      //Check for the present of an agent in next tiles. First check for a future tile two tile ahead, next check the next cell (situation could have change and the change of path could be no longer necessary or it could require an updated one)
-      let agentFound = false;
-      let aheadTileIndex = 0;
-      for (let j = i; j < i + this.#CELL_TO_CHECK_FOR_AGENTS; j += 1) {
-        if (j < path.length) {
-          const aheadTileCoordinates = new Coordinates(path[j].x, path[j].y);
-          if (this.agent.internalBelief.isTileWithAgent(aheadTileCoordinates)) {
-            agentFound = true;
-            aheadTileIndex = j;
-            break;
-          }
-        }
+      //Check for the present of an agent in next tiles. First check for a future tile two tile ahead, next check the next cell (situation could have change and the change of path could be no longer necessary or it could require an updated one). To repeat the search later without declaring another variable, this is not left as a const
+      let nearbyAgent = this.#searchNearbyAgent(path, i);
+
+      if (nearbyAgent.nearbyAgentDetected && nearbyAgent.aheadTileIndex) {
+        await this.#searchAndStoreDeviation(path, nearbyAgent.aheadTileIndex);
       }
 
-
-      if (agentFound) {
-        console.log(agentFound, aheadTileIndex);
-        const aheadTile = path[aheadTileIndex];
-        const futureAgentPosition = path[aheadTileIndex - 1];
-        const futureAgentPositionCoordinates = new Coordinates(futureAgentPosition.x, futureAgentPosition.y);
-        const aheadTileCoordinatesToString = String(aheadTile.x) + String(aheadTile.y);
-        const endPoint = path[path.length - 1];
-        const endPointCoordinates = new Coordinates(endPoint.x, endPoint.y);
-
-        const tilesToIgnoreList = [];
-        //Preparing list with all tiles to ignore
-        for (let i = 0; i < this.#CELL_TO_CHECK_FOR_AGENTS; i += 1) {
-          //Ignore selected tiles (except for the destination)
-          if (i + aheadTileIndex < path.length - 1) {
-            console.log("Ignoring ", path[i + aheadTileIndex].x, path[i + aheadTileIndex].y);
-            tilesToIgnoreList.push(path[i + aheadTileIndex]);
-          }
-        }
-
-        const subIntention = new DeviateUsingAStarIntention(endPointCoordinates, tilesToIgnoreList, futureAgentPositionCoordinates);
-
-        //Insert an entry to alternativePath: this signals that an alternative path is or will be available
-        const futurePromise = new Promise(res => {
-          this.achieveSubIntention(subIntention).then((result) => {
-
-            //Get a copy of the subPlan before it could be overwritten
-            const subPlan = /**@type {DeviateUsingAStarPlan} */(this.subPlan);
-
-            if (result && subPlan && subPlan.path) {
-              res(subPlan.path);
-            } else {
-              res([]);
-            }
-          });
-        });
-
-        //Wait 10 ms to allow safe storing of subPlan
-        await new Promise(res => setTimeout(res, 10));
-
-        alternativePath.set(aheadTileCoordinatesToString, futurePromise);
-        console.log("put: ", aheadTileCoordinatesToString);
-      }
-
-      //Check if the current "next" tile has a deviation: in such case check whether the agent is still there or in one of the next tiles, if not ignores
-      let currentTileCoordinates = new Coordinates(path[i].x, path[i].y);
+      //Check if the current "next" tile has a deviation: in such case check whether the agent is still there or in one of the next tiles, if not ignores. While this search is perfectly equivalent to the one before, the environment change very frequently
       const currentTileCoordinatesToString = String(path[i].x) + String(path[i].y);
-      const wasDeviationPresent = alternativePath.get(currentTileCoordinatesToString);
-      let isAgentInCurrentTile = this.agent.internalBelief.isTileWithAgent(currentTileCoordinates);
+      const wasDeviationPresent = this.#alternativePath.get(currentTileCoordinatesToString);
 
-      for (let j = i; j < i + this.#CELL_TO_CHECK_FOR_AGENTS; j += 1) {
-        if (j < path.length) {
-          currentTileCoordinates = new Coordinates(path[j].x, path[j].y);
-          isAgentInCurrentTile = this.agent.internalBelief.isTileWithAgent(currentTileCoordinates);
-          if (isAgentInCurrentTile) {
-            console.log("Found agent still there");
-            console.log(wasDeviationPresent && isAgentInCurrentTile, currentTileCoordinatesToString);
-            break;
-          }
-        }
-      }
+      nearbyAgent = this.#searchNearbyAgent(path, i);
 
-
-      if (wasDeviationPresent && isAgentInCurrentTile) {
+      if (wasDeviationPresent && nearbyAgent.nearbyAgentDetected) {
 
         path = await wasDeviationPresent;
         if (path.length == 0) {
           return;
         }
-        console.log("agent detected path rejected");
+
         i = 1;
         step = path[i];
-        for (const a of path) {
-          console.log("next path: ", a.x, a.y);
-        }
-        console.log("Next: ", path[i].x, path[i].y);
-        //Clear alternative path memory if a deviation is taken
-        alternativePath.clear();
+
       }
+
+      //After taking the deviation, it is no longer needed: clear. Additionally, if the deviation was not take this still means it is no longer necessary
+      this.#alternativePath.delete(currentTileCoordinatesToString);
 
       //Finally, move the agent
-      this.#moveAttemptCount++;
+      if (step.x != a.coordinates.x || step.y != a.coordinates.y) {
+        this.#moveAttemptCount++;
 
-      let movedHorizontally;
-      let movedVertically;
+        let movedHorizontally;
+        let movedVertically;
 
-      if (a.coordinates.x < step.x) {
-        movedHorizontally = await this.agent.socket.emitMove("right");
-      } else if (a.coordinates.x > step.x) {
-        movedHorizontally = await this.agent.socket.emitMove("left");
-      }
-
-      if (movedHorizontally) {
-        a.coordinates.x = movedHorizontally.x;
-      }
-
-      if (this.isStopped) {
-        this.isRunning = false;
-        return;
-      }
-
-      if (a.coordinates.y < step.y) {
-        movedVertically = await this.agent.socket.emitMove("up");
-      } else if (a.coordinates.y > step.y) {
-        movedVertically = await this.agent.socket.emitMove("down");
-      }
-
-      if (movedVertically) {
-        a.coordinates.y = movedVertically.y;
-      }
-
-      if (!movedHorizontally && !movedVertically) {
-        // Agent did not move
-        console.log("FAIL", movedHorizontally, movedVertically);
-
-        if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
-          //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
-          return new BlockPoint(step, i, true);
+        if (a.coordinates.x < step.x) {
+          movedHorizontally = await this.agent.socket.emitMove("right");
+        } else if (a.coordinates.x > step.x) {
+          movedHorizontally = await this.agent.socket.emitMove("left");
         }
 
-        if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
-          // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
-          return new BlockPoint(step, i, false);
+        if (movedHorizontally) {
+          a.coordinates.x = movedHorizontally.x;
         }
 
-        // Wait for next attempt of move, otherwise the server disconnect you
-        await new Promise((res) => setTimeout(res, 100));
+        if (this.isStopped) {
+          this.isRunning = false;
+          return;
+        }
+
+        if (a.coordinates.y < step.y) {
+          movedVertically = await this.agent.socket.emitMove("up");
+        } else if (a.coordinates.y > step.y) {
+          movedVertically = await this.agent.socket.emitMove("down");
+        }
+
+        if (movedVertically) {
+          a.coordinates.y = movedVertically.y;
+        }
+
+        if (!movedHorizontally && !movedVertically) {
+          // Agent did not move
+          console.log("FAIL", movedHorizontally, movedVertically, "from", this.agent.internalBelief.me.coordinates.x, this.agent.internalBelief.me.coordinates.y, "to", step.x, step.y);
+
+          if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
+            //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
+            return new BlockPoint(step, i, true);
+          }
+
+          if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
+            // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
+            return new BlockPoint(step, i, false);
+          }
+
+          // Wait for next attempt of move, otherwise the server disconnect you
+          await new Promise((res) => setTimeout(res, 100));
+        } else {
+          // Agent moved
+          this.#moveAttemptCount = 0;
+          i++;
+          await new Promise((res) => setTimeout(res, 10));
+        }
       } else {
-        // Agent moved
-        this.#moveAttemptCount = 0;
-        i++;
-        await new Promise((res) => setTimeout(res, 10));
+        i += 1;
       }
     }
 
@@ -750,7 +785,6 @@ export class DeviateAndPickUpPlan extends PlanBase {
    * @param {DeviateAndPickUpIntention} intention
    */
   async execute(intention) {
-    console.log("test");
     this.isRunning = true;
     this.isStopped = false;
 
