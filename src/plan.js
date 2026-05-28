@@ -161,8 +161,8 @@ class PlanBase {
 
 export class GoToPlan extends PlanBase {
   #pathFinder;
-  #MAX_MOVE_ATTEMPTS = 10;
-  #CELL_TO_CHECK_FOR_AGENTS = 4;
+  #MAX_MOVE_ATTEMPTS = 5;
+  #TILES_TO_CHECK_FOR_AGENTS = 4;
   #moveAttemptCount;
   /**
   * Map of alternative path. Id is String(tile.x)+String(tile.y). Contains the path or a promise
@@ -206,6 +206,12 @@ export class GoToPlan extends PlanBase {
     do {
       if (blockPoint) {
         //Check whether the blockPoint is a 5 or 5! tile: in such case, a crate is present and the planner need to be invoked. The planner need to guide the agent until the next cell in the already existent path that is not a 5 or 5! tile.
+
+        if (this.isStopped) {
+          this.isRunning = false;
+          return false;
+        }
+
         let wasPlannerUsed = false;
         if (blockPoint.isTileYellow) {
 
@@ -249,8 +255,12 @@ export class GoToPlan extends PlanBase {
           if (this.subPlan && DeviateUsingAStarPlan.isTypeOf(this.subPlan)) {
             /**@type {DeviateUsingAStarPlan}*/
             const subPlan = this.subPlan;
-            if (subPlan.path) {
+            if (subPlan.path && subPlan.path.length > 0) {
               path = subPlan.path;
+            } else {
+              //console.log("No path found, waiting for map unlocking and re-trying");
+              await new Promise(res => setTimeout(res, 1000));
+              continue;
             }
           }
         }
@@ -275,7 +285,7 @@ export class GoToPlan extends PlanBase {
    * @param {Number} startIndex 
    */
   #searchNearbyAgent(path, startIndex) {
-    for (let i = startIndex; i < startIndex + this.#CELL_TO_CHECK_FOR_AGENTS; i += 1) {
+    for (let i = startIndex; i < startIndex + this.#TILES_TO_CHECK_FOR_AGENTS; i += 1) {
       if (i < path.length) {
         const aheadTileCoordinates = new Coordinates(path[i].x, path[i].y);
         if (this.agent.internalBelief.isTileWithAgent(aheadTileCoordinates)) {
@@ -304,9 +314,9 @@ export class GoToPlan extends PlanBase {
     const endPoint = path[path.length - 1];
     const endPointCoordinates = new Coordinates(endPoint.x, endPoint.y);
 
-    //Preparing list with all tiles to ignore: CELL_TO_CHECK_FOR_AGENTS tiles of the path after the blocked tile
+    //Preparing list with all tiles to ignore: TILES_TO_CHECK_FOR_AGENTS tiles of the path after the blocked tile
     const tilesToIgnoreList = [];
-    for (let i = 0; i < this.#CELL_TO_CHECK_FOR_AGENTS; i += 1) {
+    for (let i = 0; i < this.#TILES_TO_CHECK_FOR_AGENTS; i += 1) {
 
       //Ignore selected tiles (except for the destination)
       if (i + aheadTileIndex < path.length - 1) {
@@ -324,7 +334,6 @@ export class GoToPlan extends PlanBase {
     const futurePromise = new Promise(res => {
       this.achieveSubIntention(subIntention).then((result) => {
 
-        //Get a copy of the subPlan before it could be overwritten
         const subPlan = /**@type {DeviateUsingAStarPlan} */(this.subPlan);
 
         if (result && subPlan && subPlan.path) {
@@ -376,78 +385,79 @@ export class GoToPlan extends PlanBase {
 
       nearbyAgent = this.#searchNearbyAgent(path, i);
 
-      if (wasDeviationPresent && nearbyAgent.nearbyAgentDetected) {
+      if (wasDeviationPresent && nearbyAgent.nearbyAgentDetected && nearbyAgent.aheadTileIndex) {
 
-        path = await wasDeviationPresent;
-        if (path.length == 0) {
-          return;
+        const newPath = await wasDeviationPresent;
+        if (newPath.length != 0) {
+          //Perform a deep copy of the path if it is valid, otherwise the deviation is not valid
+          path = [...newPath];
+          i = 1;
+          step = path[i];
+        } else {
+          return new BlockPoint(step, i, false);
+
         }
-
-        i = 1;
-        step = path[i];
 
       }
 
       //After taking the deviation, it is no longer needed: clear. Additionally, if the deviation was not take this still means it is no longer necessary
       this.#alternativePath.delete(currentTileCoordinatesToString);
 
-      //Finally, move the agent
-      if (step.x != a.coordinates.x || step.y != a.coordinates.y) {
-        this.#moveAttemptCount++;
+      //Finally, move the agent (but check if the move is valid)
 
-        let movedHorizontally;
-        let movedVertically;
+      this.#moveAttemptCount++;
 
-        if (a.coordinates.x < step.x) {
-          movedHorizontally = await this.agent.socket.emitMove("right");
-        } else if (a.coordinates.x > step.x) {
-          movedHorizontally = await this.agent.socket.emitMove("left");
-        }
+      let movedHorizontally;
+      let movedVertically;
 
-        if (movedHorizontally) {
-          a.coordinates.x = movedHorizontally.x;
-        }
-
-        if (this.isStopped) {
-          this.isRunning = false;
-          return;
-        }
-
-        if (a.coordinates.y < step.y) {
-          movedVertically = await this.agent.socket.emitMove("up");
-        } else if (a.coordinates.y > step.y) {
-          movedVertically = await this.agent.socket.emitMove("down");
-        }
-
-        if (movedVertically) {
-          a.coordinates.y = movedVertically.y;
-        }
-
-        if (!movedHorizontally && !movedVertically) {
-          // Agent did not move
-          console.log("FAIL", movedHorizontally, movedVertically, "from", this.agent.internalBelief.me.coordinates.x, this.agent.internalBelief.me.coordinates.y, "to", step.x, step.y);
-
-          if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
-            //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
-            return new BlockPoint(step, i, true);
-          }
-
-          if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
-            // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
-            return new BlockPoint(step, i, false);
-          }
-
-          // Wait for next attempt of move, otherwise the server disconnect you
-          await new Promise((res) => setTimeout(res, 100));
-        } else {
-          // Agent moved
-          this.#moveAttemptCount = 0;
-          i++;
-          await new Promise((res) => setTimeout(res, 50));
-        }
-      } else {
-        i += 1;
+      if (a.coordinates.x < step.x) {
+        movedHorizontally = await this.agent.socket.emitMove("right");
+      } else if (a.coordinates.x > step.x) {
+        movedHorizontally = await this.agent.socket.emitMove("left");
       }
+
+      if (movedHorizontally) {
+        a.coordinates.x = movedHorizontally.x;
+      }
+
+      if (this.isStopped) {
+        this.isRunning = false;
+        return;
+      }
+
+      if (a.coordinates.y < step.y) {
+        movedVertically = await this.agent.socket.emitMove("up");
+      } else if (a.coordinates.y > step.y) {
+        movedVertically = await this.agent.socket.emitMove("down");
+      }
+
+      if (movedVertically) {
+        a.coordinates.y = movedVertically.y;
+      }
+
+      if (!movedHorizontally && !movedVertically) {
+        // Agent did not move
+        //console.log("FAIL", movedHorizontally, movedVertically, "from", a.coordinates.x, a.coordinates.y, "to", step.x, step.y);
+
+        if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
+          //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
+          return new BlockPoint(step, i, true);
+        }
+
+        if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
+          // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
+          return new BlockPoint(step, i, false);
+        }
+
+        // Wait for next attempt of move, otherwise the server disconnect you
+        await new Promise((res) => setTimeout(res, 50));
+      } else {
+        // Agent moved
+        this.#moveAttemptCount = 0;
+        i++;
+        //await new Promise((res) => setTimeout(res, 50));
+      }
+
 
     }
 

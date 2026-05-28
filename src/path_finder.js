@@ -220,7 +220,7 @@ class Astar {
         for (const neighbor of point.neighbors) {
           neighbor.updateNeighbors(this.#map);
         }
-      }, 2500);
+      }, 300);
     }
   }
 
