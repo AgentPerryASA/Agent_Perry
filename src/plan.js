@@ -335,8 +335,8 @@ export class GoToPlan extends PlanBase {
       });
     });
 
-    //Wait 10 ms to allow safe storing of subPlan
-    await new Promise(res => setTimeout(res, 10));
+    //Wait 20 ms to allow safe storing of subPlan
+    await new Promise(res => setTimeout(res, 20));
 
     this.#alternativePath.set(aheadTileCoordinatesToString, futurePromise);
   }
@@ -442,7 +442,7 @@ export class GoToPlan extends PlanBase {
         // Agent moved
         this.#moveAttemptCount = 0;
         i++;
-        await new Promise((res) => setTimeout(res, 10));
+        await new Promise((res) => setTimeout(res, 50));
       }
 
     }

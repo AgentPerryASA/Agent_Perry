@@ -535,9 +535,14 @@ export class Beliefs {
     //Clear the array
     this.#nearAgentList.splice(0, this.#nearAgentList.length);
 
-    //Copy needed, otherwise it's not a copy but a reference
+    //Copy needed: sometimes coordinates have decimal points
     for (let i = 0; i < agents.length; i += 1) {
-      this.#nearAgentList.push(agents[i]);
+      const agent = agents[i];
+      if (agent.x && agent.y) {
+        agent.x = Math.ceil(agent.x);
+        agent.y = Math.ceil(agent.y);
+      }
+      this.#nearAgentList.push(agent);
     }
   }
 
