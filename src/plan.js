@@ -27,12 +27,12 @@ class BlockPoint {
   /**
    *
    * @param {MapPoint} blockPoint
-   * @param {Number} indexOfPath
+   * @param {Number} indexOfPlan
    * @param {Boolean} isTileYellow
    */
-  constructor(blockPoint, indexOfPath, isTileYellow) {
+  constructor(blockPoint, indexOfPlan, isTileYellow) {
     this.#blockPoint = blockPoint;
-    this.#indexOfPath = indexOfPath;
+    this.#indexOfPath = indexOfPlan;
     this.#isTileYellow = isTileYellow;
   }
 
@@ -190,13 +190,10 @@ export class GoToPlan extends PlanBase {
           if (this.subPlan && DeviateUsingPlannerPlan.isTypeOf(this.subPlan)) {
             /**@type {DeviateUsingPlannerPlan}*/
             const subPlan = this.subPlan;
-
-            do {
-              if (subPlan.path) {
-                path = subPlan.path;
-                wasPlannerUsed = true;
-              }
-            } while (!subPlan.path);
+            if (subPlan.path) {
+              path = subPlan.path;
+              wasPlannerUsed = true;
+            }
           }
 
         }
@@ -246,145 +243,20 @@ export class GoToPlan extends PlanBase {
     const a = this.agent.internalBelief.me;
     let i = 1;
 
-    /**
-     * Map contatining proposed deviation. In case a deviation is present but a path is being calculated, the number 0 should be present. Undefined is not used to differ from the case the deviation is present (map.get returns undefined)
-     * @type {Map<String,MapPoint[] | Number>} 
-     */
-    const futurePathsMap = new Map();
-
-    /**
-     * @type {Map<string,Map<string,Coordinates>>}
-     */
-    const consideredCratesForFuturePath = new Map();
-
-
     while (i < path.length) {
-
       if (this.isStopped) {
         this.isRunning = false;
         return;
       }
-      await new Promise((res) => {
-        setTimeout(res, 500);
-      });
 
-      //Check if a past prediction and path change was present
-      //Building current coordinates id
-      const currentPathCoordinatesString = String(path[i].x) + String(path[i].y);
-
-      //Check presence of a path being calculated
-      let doesAlternativePathExists = futurePathsMap.get(currentPathCoordinatesString);
-      if (doesAlternativePathExists != undefined) {
-        console.log("deviation found ", currentPathCoordinatesString);
-        /**@type {MapPoint[] | undefined | Number} */
-        let newPath = [];
-
-        //Recover the path when ready
-        do {
-          //Wait a second before check
-          await new Promise((res) => {
-            setTimeout(res, 1000);
-          });
-
-          //Try to get the path (check if its ready and that it was not aborted)
-          newPath = futurePathsMap.get(currentPathCoordinatesString);
-          doesAlternativePathExists = futurePathsMap.get(currentPathCoordinatesString);
-
-          const isNewPathAPath = Array.isArray(newPath) && newPath.every(p => p instanceof MapPoint);
-
-          if (isNewPathAPath) {
-            //If newPath is a list of MapPoint, proceed
-            path = /**@type {MapPoint[]}*/(newPath);
-
-            //The first element of the path is the current tile, it necessary to shift by one
-            i = 1;
-
-            //Remove the deviation suggestions: useful in case agent will go in the same tile
-            futurePathsMap.delete(currentPathCoordinatesString);
-            consideredCratesForFuturePath.delete(currentPathCoordinatesString);
-          }
-        } while (!newPath && doesAlternativePathExists);
-      }
-
-      //Check wether the situation didn't change: if new crates were found, the previous prediction is no longer valid
-      const currentDetectedCrates = this.agent.internalBelief.tileWithCrateMap;
-      const predictionDetectedCrates = consideredCratesForFuturePath.get(currentPathCoordinatesString);
-
-      if (predictionDetectedCrates) {
-        let needCorrection = false;
-        if (currentDetectedCrates.keys.length != predictionDetectedCrates.keys.length) {
-          needCorrection = true;
-        } else {
-          for (const [key, coordinates] of currentDetectedCrates) {
-            const predictionCrateCoordinates = predictionDetectedCrates.get(key);
-            if (!predictionCrateCoordinates) {
-              needCorrection = true;
-              break;
-            } else if (coordinates.x != predictionCrateCoordinates.x || coordinates.y != predictionCrateCoordinates.y) {
-              needCorrection = true;
-              break;
-            }
-          }
-        }
-
-        if (needCorrection) {
-          console.log("Deviation needs correction", currentPathCoordinatesString);
-          const subIntention = new DeviateUsingPlannerIntention(path, i);
-          //Calculate the path
-          const isCompleted = await this.achieveSubIntention(subIntention);
-
-          //If path is found, put it on list
-          if (isCompleted && this.subPlan && DeviateUsingPlannerPlan.isTypeOf(this.subPlan)) {
-            /**@type {DeviateUsingPlannerPlan}*/
-            const subPlan = this.subPlan;
-            if (subPlan.path) {
-              path = subPlan.path;
-            }
-          }
-        }
-      }
-      //Prepare future predictions
-      const aheadPoint = i + 2 < path.length ? i + 2 : (i + 1 < path.length ? i + 1 : i);
-      const aheadMapPoint = path[aheadPoint];
-      const aheadCoordinates = new Coordinates(aheadMapPoint.x, aheadMapPoint.y);
-
-      if (!aheadMapPoint.insertedByPlanner && this.agent.internalBelief.tileMap.getYellowTile(aheadCoordinates) && this.agent.internalBelief.isTileWithCrate(aheadCoordinates)) {
-        //Stop the execution immediately if the tile was not set by the planner, it is yellow : this avoid calling the planner if the tile is yellow but no crate are on it, therefore it is a walkable tile
-        setTimeout(async () => {
-          console.log("test1");
-          const subIntention = new DeviateUsingPlannerIntention(path, aheadPoint - 1);
-
-          //Copy values to prevent overwriting
-          const localCoordinatesCopyInString = String(aheadCoordinates.x) + String(aheadCoordinates.y);
-          const localConsideredCratesCopy = this.agent.internalBelief.tileWithCrateMap;
-
-          //Set to futurePathMap that an alternative route will be calculated
-          futurePathsMap.set(localCoordinatesCopyInString, 0);
-          console.log("test2");
-          //Calculate the path
-          const isCompleted = await this.achieveSubIntention(subIntention);
-          console.log("test3");
-          //If path is found, put it on list
-          if (isCompleted && this.subPlan && DeviateUsingPlannerPlan.isTypeOf(this.subPlan)) {
-            console.log("test4");
-            /**@type {DeviateUsingPlannerPlan}*/
-            const subPlan = this.subPlan;
-            console.log("test5" + subPlan.path);
-            if (subPlan.path) {
-              console.log("Inserting ", localCoordinatesCopyInString);
-              futurePathsMap.set(localCoordinatesCopyInString, subPlan.path);
-
-              consideredCratesForFuturePath.set(localCoordinatesCopyInString, localConsideredCratesCopy);
-            }
-          } else {
-            //If path not found, delete the possibility from futurePathsMap
-            futurePathsMap.delete(localCoordinatesCopyInString);
-          }
-        }, 0);
-      }
-
-      //Perform usual movement. Check if a path was being calculated
       const step = path[i];
+
+      let coordinates = new Coordinates(step.x, step.y);
+
+      if (!step.insertedByPlanner && this.agent.internalBelief.tileMap.getYellowTile(coordinates) && this.agent.internalBelief.isTileWithCrate(coordinates)) {
+        //Stop the execution immediately if the tile was not set by the planner, it is yellow and has a crate over it: this avoid calling the planner if the tile is yellow but no crate are on it, therefore it is a walkable tile
+        return new BlockPoint(step, i, true);
+      }
 
       this.#moveAttemptCount++;
 
@@ -418,9 +290,9 @@ export class GoToPlan extends PlanBase {
 
       if (!movedHorizontally && !movedVertically) {
         // Agent did not move
-        console.log("FAIL", movedHorizontally, movedVertically, this.agent.internalBelief.tileMap.getYellowTile(new Coordinates(step.x, step.y)));
+        console.log("FAIL", movedHorizontally, movedVertically);
 
-        if (this.agent.internalBelief.tileMap.getYellowTile(new Coordinates(step.x, step.y))) {
+        if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
           //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
           return new BlockPoint(step, i, true);
         }
@@ -441,6 +313,7 @@ export class GoToPlan extends PlanBase {
 
     return;
   }
+
   /**
    * @param {Plan} plan
    */
@@ -556,6 +429,7 @@ export class DeviateUsingPlannerPlan extends PlanBase {
     }
 
     if (path[0].x == endPoint.x && path[0].y == endPoint.y) {
+
       this.#path = undefined;
       return true;
 

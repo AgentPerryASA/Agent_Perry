@@ -178,10 +178,6 @@ export class Beliefs {
     this.#plannerBeliefSet = new Beliefset();
   }
 
-  get tileWithCrateMap() {
-    return this.#tileWithCrateMap;
-  }
-
   get tileMap() {
     return this.#tileMap;
   }
@@ -572,8 +568,8 @@ export class Beliefs {
   }
 
   /**
-  * @param { Coordinates } tileCoordinates
-  */
+   * @param {Coordinates} tileCoordinates 
+   */
   isTileWithCrate(tileCoordinates) {
     for (const [_, tile] of this.#tileWithCrateMap) {
       if (tileCoordinates.x == tile.x && tileCoordinates.y == tile.y) {
