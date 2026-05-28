@@ -392,62 +392,59 @@ export class GoToPlan extends PlanBase {
       this.#alternativePath.delete(currentTileCoordinatesToString);
 
       //Finally, move the agent
-      if (step.x != a.coordinates.x || step.y != a.coordinates.y) {
-        this.#moveAttemptCount++;
+      this.#moveAttemptCount++;
 
-        let movedHorizontally;
-        let movedVertically;
+      let movedHorizontally;
+      let movedVertically;
 
-        if (a.coordinates.x < step.x) {
-          movedHorizontally = await this.agent.socket.emitMove("right");
-        } else if (a.coordinates.x > step.x) {
-          movedHorizontally = await this.agent.socket.emitMove("left");
-        }
-
-        if (movedHorizontally) {
-          a.coordinates.x = movedHorizontally.x;
-        }
-
-        if (this.isStopped) {
-          this.isRunning = false;
-          return;
-        }
-
-        if (a.coordinates.y < step.y) {
-          movedVertically = await this.agent.socket.emitMove("up");
-        } else if (a.coordinates.y > step.y) {
-          movedVertically = await this.agent.socket.emitMove("down");
-        }
-
-        if (movedVertically) {
-          a.coordinates.y = movedVertically.y;
-        }
-
-        if (!movedHorizontally && !movedVertically) {
-          // Agent did not move
-          console.log("FAIL", movedHorizontally, movedVertically, "from", this.agent.internalBelief.me.coordinates.x, this.agent.internalBelief.me.coordinates.y, "to", step.x, step.y);
-
-          if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
-            //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
-            return new BlockPoint(step, i, true);
-          }
-
-          if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
-            // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
-            return new BlockPoint(step, i, false);
-          }
-
-          // Wait for next attempt of move, otherwise the server disconnect you
-          await new Promise((res) => setTimeout(res, 100));
-        } else {
-          // Agent moved
-          this.#moveAttemptCount = 0;
-          i++;
-          await new Promise((res) => setTimeout(res, 10));
-        }
-      } else {
-        i += 1;
+      if (a.coordinates.x < step.x) {
+        movedHorizontally = await this.agent.socket.emitMove("right");
+      } else if (a.coordinates.x > step.x) {
+        movedHorizontally = await this.agent.socket.emitMove("left");
       }
+
+      if (movedHorizontally) {
+        a.coordinates.x = movedHorizontally.x;
+      }
+
+      if (this.isStopped) {
+        this.isRunning = false;
+        return;
+      }
+
+      if (a.coordinates.y < step.y) {
+        movedVertically = await this.agent.socket.emitMove("up");
+      } else if (a.coordinates.y > step.y) {
+        movedVertically = await this.agent.socket.emitMove("down");
+      }
+
+      if (movedVertically) {
+        a.coordinates.y = movedVertically.y;
+      }
+
+      if (!movedHorizontally && !movedVertically) {
+        // Agent did not move
+        console.log("FAIL", movedHorizontally, movedVertically, "from", this.agent.internalBelief.me.coordinates.x, this.agent.internalBelief.me.coordinates.y, "to", step.x, step.y);
+
+        if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
+          //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
+          return new BlockPoint(step, i, true);
+        }
+
+        if (this.#moveAttemptCount > this.#MAX_MOVE_ATTEMPTS) {
+          // Stop the execution of the path if after 10 consecutive attempts to move the agent is blocked
+          return new BlockPoint(step, i, false);
+        }
+
+        // Wait for next attempt of move, otherwise the server disconnect you
+        await new Promise((res) => setTimeout(res, 100));
+      } else {
+        // Agent moved
+        this.#moveAttemptCount = 0;
+        i++;
+        await new Promise((res) => setTimeout(res, 10));
+      }
+
     }
 
     return;
