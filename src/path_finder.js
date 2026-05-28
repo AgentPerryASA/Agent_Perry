@@ -35,7 +35,7 @@ export class PathFinder {
   /**
    * @param {{x:number, y:number}} start
    * @param {{x:number, y:number}} end
-   * @param {MapPoint | undefined} pointToIgnore
+   * @param {MapPoint[] | undefined} pointToIgnore
    */
   search(start, end, pointToIgnore = undefined) {
     return this.#algorithm.search(start, end, pointToIgnore);
@@ -119,7 +119,7 @@ class Astar {
   /**
    * @param {{x:number, y:number}} startPoint
    * @param {{x:number, y:number}} endPoint
-   * @param {MapPoint | undefined} pointToIgnore
+   * @param {MapPoint[] | undefined} pointToIgnore
    * @returns The shortest path from startPoint to endPoint in Manhattan distance
    */
   search(startPoint, endPoint, pointToIgnore = undefined) {
@@ -185,7 +185,7 @@ class Astar {
   }
 
   /**
-   * @param {MapPoint | undefined} pointToIgnore
+   * @param {MapPoint[] | undefined} pointToIgnore
    */
   #cleanForNewSearch(pointToIgnore = undefined) {
     // Clean points info (parent and functions)
@@ -198,7 +198,9 @@ class Astar {
     }
 
     if (pointToIgnore) {
-      this.#ignorePoint(pointToIgnore, true);
+      for (const point of pointToIgnore) {
+        this.#ignorePoint(point, true);
+      }
     }
   }
 

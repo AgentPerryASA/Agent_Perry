@@ -198,9 +198,9 @@ export class Beliefs {
     return this.#parcelMinScore;
   }
 
-  get nearAgentList() {
+  /*get nearAgentList() {
     return this.#nearAgentList;
-  }
+  }*/
 
   get me() {
     return this.#me;
@@ -573,6 +573,19 @@ export class Beliefs {
   isTileWithCrate(tileCoordinates) {
     for (const [_, tile] of this.#tileWithCrateMap) {
       if (tileCoordinates.x == tile.x && tileCoordinates.y == tile.y) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * @param {Coordinates} tileCoordinates 
+   */
+  isTileWithAgent(tileCoordinates) {
+    for (const agent of this.#nearAgentList) {
+      if (agent.x == tileCoordinates.x && agent.y == tileCoordinates.y) {
         return true;
       }
     }

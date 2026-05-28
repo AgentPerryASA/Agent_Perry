@@ -108,24 +108,32 @@ export class DeviateUsingAStarIntention {
 
   /**@type {Coordinates}*/
   #endPointCoordinates;
-  /**@type {MapPoint}*/
-  #blockPoint;
+  /**@type {MapPoint[]}*/
+  #blockPoints;
+  /**@type {Coordinates | undefined} startPointCoordinates */
+  #startPointCoordinates;
 
   /**
    * @param {Coordinates} endPointCoordinates 
-   * @param {MapPoint} blockPoint 
+   * @param {MapPoint[]} blockPoints s
+   * @param {Coordinates | undefined} startPointCoordinates
    */
-  constructor(endPointCoordinates, blockPoint) {
+  constructor(endPointCoordinates, blockPoints, startPointCoordinates = undefined) {
     this.#endPointCoordinates = endPointCoordinates;
-    this.#blockPoint = blockPoint;
+    this.#blockPoints = blockPoints;
+    this.#startPointCoordinates = startPointCoordinates;
   }
 
   get endPointCoordinates() {
     return this.#endPointCoordinates;
   }
 
-  get blockPoint() {
-    return this.#blockPoint;
+  get blockPoints() {
+    return this.#blockPoints;
+  }
+
+  get startPointCoordinates() {
+    return this.#startPointCoordinates;
   }
 
   /**
@@ -136,9 +144,21 @@ export class DeviateUsingAStarIntention {
     let doCoordinatesMatch = false;
 
     if (instance) {
-      const i = /**@type {DeviateUsingAStarIntention}*/(intention);
+      const inte = /**@type {DeviateUsingAStarIntention}*/(intention);
 
-      doCoordinatesMatch = i.blockPoint.x == this.#blockPoint.x && i.blockPoint.y == this.#blockPoint.y && i.#endPointCoordinates.x == this.#endPointCoordinates.x && i.#endPointCoordinates.y == this.#endPointCoordinates.y;
+      doCoordinatesMatch = inte.#endPointCoordinates.x == this.#endPointCoordinates.x && inte.#endPointCoordinates.y == this.#endPointCoordinates.y;
+
+      if (doCoordinatesMatch && this.#blockPoints.length == inte.blockPoints.length) {
+        for (let i = 0; i < this.#blockPoints.length; i += 1) {
+          if (this.#blockPoints[i].x != inte.blockPoints[i].x || this.#blockPoints[i].y != inte.blockPoints[i].y) {
+            doCoordinatesMatch = false;
+            break;
+          }
+        }
+      } else {
+        doCoordinatesMatch = false;
+      }
+
     }
 
     return instance && doCoordinatesMatch;
