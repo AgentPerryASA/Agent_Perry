@@ -136,7 +136,7 @@ class PlanBase {
 export class GoToPlan extends PlanBase {
   #pathFinder;
   #MAX_MOVE_ATTEMPTS = 10;
-  #CELL_TO_IGNORE_FOR_AGENTS = 3;
+  #CELL_TO_CHECK_FOR_AGENTS = 4;
   #moveAttemptCount;
 
   /**
@@ -267,14 +267,22 @@ export class GoToPlan extends PlanBase {
       }
 
       //Check for the present of an agent in next tiles. First check for a future tile two tile ahead, next check the next cell (situation could have change and the change of path could be no longer necessary or it could require an updated one)
-      let aheadTileIndex = i + 4 < path.length ? i + 4 : undefined;
-      let aheadTileCoordinates = undefined;
-      if (aheadTileIndex) {
-        aheadTileCoordinates = new Coordinates(path[aheadTileIndex].x, path[aheadTileIndex].y);
+      let agentFound = false;
+      let aheadTileIndex = 0;
+      for (let j = i; j < i + this.#CELL_TO_CHECK_FOR_AGENTS; j += 1) {
+        if (j < path.length) {
+          const aheadTileCoordinates = new Coordinates(path[j].x, path[j].y);
+          if (this.agent.internalBelief.isTileWithAgent(aheadTileCoordinates)) {
+            agentFound = true;
+            aheadTileIndex = j;
+            break;
+          }
+        }
       }
 
 
-      if (aheadTileIndex != undefined && aheadTileCoordinates != undefined && this.agent.internalBelief.isTileWithAgent(aheadTileCoordinates)) {
+      if (agentFound) {
+        console.log(agentFound, aheadTileIndex);
         const aheadTile = path[aheadTileIndex];
         const futureAgentPosition = path[aheadTileIndex - 1];
         const futureAgentPositionCoordinates = new Coordinates(futureAgentPosition.x, futureAgentPosition.y);
@@ -284,8 +292,9 @@ export class GoToPlan extends PlanBase {
 
         const tilesToIgnoreList = [];
         //Preparing list with all tiles to ignore
-        for (let i = 0; i < this.#CELL_TO_IGNORE_FOR_AGENTS; i += 1) {
-          if (i + aheadTileIndex < path.length) {
+        for (let i = 0; i < this.#CELL_TO_CHECK_FOR_AGENTS; i += 1) {
+          //Ignore selected tiles (except for the destination)
+          if (i + aheadTileIndex < path.length - 1) {
             console.log("Ignoring ", path[i + aheadTileIndex].x, path[i + aheadTileIndex].y);
             tilesToIgnoreList.push(path[i + aheadTileIndex]);
           }
@@ -321,7 +330,7 @@ export class GoToPlan extends PlanBase {
       const wasDeviationPresent = alternativePath.get(currentTileCoordinatesToString);
       let isAgentInCurrentTile = this.agent.internalBelief.isTileWithAgent(currentTileCoordinates);
 
-      for (let j = i; j < i + this.#CELL_TO_IGNORE_FOR_AGENTS; j += 1) {
+      for (let j = i; j < i + this.#CELL_TO_CHECK_FOR_AGENTS; j += 1) {
         if (j < path.length) {
           currentTileCoordinates = new Coordinates(path[j].x, path[j].y);
           isAgentInCurrentTile = this.agent.internalBelief.isTileWithAgent(currentTileCoordinates);
