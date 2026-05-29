@@ -1,26 +1,85 @@
+import { Beliefset, onlineSolver, PddlProblem } from "@unitn-asa/pddl-client";
+import path from "path";
+import fs from "fs";
+import { Agent } from "./agent.js";
+
+/**
+ *
+ * @param {string} filePath
+ */
+async function readFile(filePath) {
+  const file = await new Promise((res, rej) => {
+    fs.readFile(filePath, "utf8", (err, data) => {
+      if (err) rej(err);
+      else res(data);
+    });
+  });
+
+  return file ? file : "";
+}
+
 export class PathFinder {
   #algorithm;
+
+  /**@type {String | undefined}*/
+  #pddlDomainString;
 
   /**
    * @param {string[][]} map A column-wise matrix, so map[x][y] returns cell (x, y)
    */
   constructor(map) {
     this.#algorithm = new Astar(map);
+    this.#pddlDomainString = undefined;
   }
 
   /**
    * @param {{x:number, y:number}} start
    * @param {{x:number, y:number}} end
-   * @param {MapPoint | undefined} pointToIgnore
+   * @param {MapPoint[] | undefined} pointToIgnore
    */
   search(start, end, pointToIgnore = undefined) {
     return this.#algorithm.search(start, end, pointToIgnore);
   }
 
   /**
+   * @param {Beliefset} beliefSet
+   * @param {MapPoint} end
+   */
+  async searchWithPlanner(beliefSet, end) {
+    //Get belief already prepared for the planner
+    const bs = beliefSet;
+
+    //Build the pddl problem and convert it to string
+    const pddlProblem = new PddlProblem(
+      `Travel to tile${end.x}_${end.y}`,
+      bs.objects.join(" "),
+      bs.toPddlString(),
+      `perry tile${end.x}_${end.y}`,
+    );
+    const problemString = pddlProblem.toPddlString();
+
+    if (!this.#pddlDomainString) {
+      //Recover domain file
+      const __filename = path.resolve(process.argv[1]);
+      const __dirname = path.dirname(__filename);
+      const filePath = path.join(__dirname, "./src/planner/domain.pddl");
+      this.#pddlDomainString = await readFile(filePath);
+    }
+
+    const plannerPlan = await onlineSolver(
+      //@ts-ignore: cannot be undefined because check is performed just before this instruction. At worst is empty.
+      this.#pddlDomainString,
+      problemString,
+    );
+
+    return plannerPlan;
+  }
+
+  /**
    * @param {MapPoint} point
    */
   removePoint(point) {
+
     this.#algorithm.removePoint(point);
   }
 }
@@ -61,7 +120,7 @@ class Astar {
   /**
    * @param {{x:number, y:number}} startPoint
    * @param {{x:number, y:number}} endPoint
-   * @param {MapPoint | undefined} pointToIgnore
+   * @param {MapPoint[] | undefined} pointToIgnore
    * @returns The shortest path from startPoint to endPoint in Manhattan distance
    */
   search(startPoint, endPoint, pointToIgnore = undefined) {
@@ -127,7 +186,7 @@ class Astar {
   }
 
   /**
-   * @param {MapPoint | undefined} pointToIgnore
+   * @param {MapPoint[] | undefined} pointToIgnore
    */
   #cleanForNewSearch(pointToIgnore = undefined) {
     // Clean points info (parent and functions)
@@ -140,7 +199,9 @@ class Astar {
     }
 
     if (pointToIgnore) {
-      this.#ignorePoint(pointToIgnore, true);
+      for (const point of pointToIgnore) {
+        this.#ignorePoint(point, true);
+      }
     }
   }
 
@@ -149,7 +210,7 @@ class Astar {
    * @param {boolean} resetAfterTimeout
    */
   #ignorePoint(point, resetAfterTimeout) {
-    // Update the neighbors of the point so that they ignore it, namely do not put the point as thier neighbor
+    // Update the neighbors of the point so that they ignore it, namely do not put the point as their neighbor
     for (const neighbor of point.neighbors) {
       neighbor.updateNeighbors(this.#map, point);
     }
@@ -160,7 +221,7 @@ class Astar {
         for (const neighbor of point.neighbors) {
           neighbor.updateNeighbors(this.#map);
         }
-      }, 5000);
+      }, 300);
     }
   }
 
@@ -188,12 +249,15 @@ export class MapPoint {
   #neighbors; // neighbors of the current map point
   /** @type { MapPoint | undefined } */
   parent; // immediate source of the current map point
+  /**@type {Boolean} */
+  insertedByPlanner;
 
   /**
    *
    * @param {{x:number, y:number, w:string}} point
+   * @param {Boolean} insertedByPlanner
    */
-  constructor(point) {
+  constructor(point, insertedByPlanner = false) {
     this.#x = point.x;
     this.#y = point.y;
     this.#w = point.w;
@@ -201,6 +265,7 @@ export class MapPoint {
     this.g = 0;
     this.h = 0;
     this.#neighbors = [];
+    this.insertedByPlanner = insertedByPlanner;
   }
 
   get x() {

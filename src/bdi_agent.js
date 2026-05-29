@@ -7,20 +7,14 @@ import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
-import { Beliefs, TargetTile } from "./belief.js"
-import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js"
+import { Beliefs, TargetTile } from "./belief.js";
+import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
 import { HandshakeMessage, ActionMessage, MessageType, BDIRespondeMessage } from './message.js';
 
 export class BDIAgent {
   #socket;
-  // TODO: TEO -> belief
-  #planLibrary;
   /** @type { {intention: Intention, plan: Plan}[] } */
   #intentionPlanQueue;
-  // TODO: TEO -> belief
-  /** @type { TargetTile | undefined } */
-  #currentTargetTile;
-
   /** @type { Beliefs } */
   #internalBelief;
 
@@ -28,7 +22,6 @@ export class BDIAgent {
    * @param {string} token 
    */
   constructor(token) {
-    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan];
     this.#intentionPlanQueue = [];
     this.#internalBelief = new Beliefs();
     this.#socket = DjsConnect(undefined, token);
@@ -64,7 +57,7 @@ export class BDIAgent {
     // Store relevant map configuration
     promiseList.push(new Promise(resolve => {
       this.#socket.onConfig(config => {
-        this.#internalBelief.updateGameConfiguration(config)
+        this.#internalBelief.updateGameConfiguration(config);
 
         resolve(true);
       });
@@ -97,16 +90,17 @@ export class BDIAgent {
     Promise.all(promiseList).then(async () => {
       // Keep track of parcels around us
       this.#socket.onSensing(async sensing => {
-        this.#internalBelief.reviseParcelList(sensing.parcels)
+        this.#internalBelief.reviseParcelList(sensing.parcels);
         this.#internalBelief.reviseCarriedParcelList(sensing.parcels);
-        this.#internalBelief.updateNearAgentList(sensing.agents)
+        this.#internalBelief.updateNearAgentList(sensing.agents);
+        this.#internalBelief.updateTileWithCrate(sensing.crates);
       });
 
       // Constantly generate the best intention based on our sensing
       setInterval(async () => {
         await this.#generateBestIntention();
-      }, 100)
-    })
+      }, 100);
+    });
   }
 
   async #handshake() {
@@ -210,9 +204,11 @@ export class BDIAgent {
 
         if (futureValueNewParcel > this.#internalBelief.parcelMinScore) {
           this.#internalBelief.deviateAndPickupIntentionCounter += 1;
-          // @ts-ignore
+
           // NOTE: if entered here, goPutDownIntention is safely of type GoPutDownIntention
-          return new DeviateAndPickUpIntention(parcel.parcel, goPutDownIntention.deliveryCoordinates);
+          const int = new DeviateAndPickUpIntention(parcel.parcel, /**@type {GoPutDownIntention} */(goPutDownIntention).deliveryCoordinates);
+
+          return int;
         }
       }
     }
@@ -226,15 +222,18 @@ export class BDIAgent {
 
     // Check the intention of delivering the parcels we are carrying to a red tile according to its weight
     if (this.#internalBelief.carriedParcelsCount >= 1) {
-      if (this.#currentTargetTile) {
+      if (this.#internalBelief.currentTargetTile) {
         // Check if the current target tile is a green one (we just picked up a parcel)
-        const currentGreenTile = this.#internalBelief.tileMap.getGreenTile(this.#currentTargetTile);
+        const currentGreenTile = this.#internalBelief.tileMap.getGreenTile(this.#internalBelief.currentTargetTile);
         if (currentGreenTile) {
           // Select a random path from the current green to a red
           const red = this.#selectRandomWeightedPath();
           if (red) {
             // Return best intention
-            return new GoPutDownIntention(red.destinationCoordinates, red.path);
+
+            const int = new GoPutDownIntention(red.destinationCoordinates, red.path);
+
+            return int;
           }
         }
       }
@@ -252,6 +251,7 @@ export class BDIAgent {
     }
     if (bestIntention) {
       // Return best intention
+
       return bestIntention;
     }
 
@@ -268,14 +268,16 @@ export class BDIAgent {
 
     // Check the intention of going to a green tile, if there are no free parcels around us or in our memory
     // If we just delivered a parcel, select one of the predefined paths of the red tile ...
-    if (this.#currentTargetTile) {
+    if (this.#internalBelief.currentTargetTile) {
       // Check if the current target tile is a red one (we just put down a parcel)
-      const currentRedTile = this.#internalBelief.tileMap.getRedTile(this.#currentTargetTile);
+      const currentRedTile = this.#internalBelief.tileMap.getRedTile(this.#internalBelief.currentTargetTile);
       if (currentRedTile) {
         // Select a random path from the current red to a green
         const green = this.#selectRandomWeightedPath();
         if (green) {
-          return new GoToIntention(green.destinationCoordinates, green.path);
+          const int = new GoToIntention(green.destinationCoordinates, green.path);
+
+          return int;
         }
       }
     }
@@ -305,11 +307,14 @@ export class BDIAgent {
 
     // Stop the current intention before pushing the new one
     await this.#stopCurrentIntention();
+
     // If a GoToIntention was stopped, pop it (no need to be maintained in the queue)
     if (this.#currentIntention && GoToIntention.isTypeOf(this.#currentIntention)) {
+      console.log("pop ", this.#currentIntention);
       this.#intentionPlanQueue.pop();
     }
 
+    console.log("push ", intention, this.#intentionPlanQueue);
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
 
     await this.#achieveCurrentIntention();
@@ -329,7 +334,7 @@ export class BDIAgent {
       }
 
       const oldPlan = this.#currentPlan;
-      this.#intentionPlanQueue.pop()
+      this.#intentionPlanQueue.pop();
 
       if (this.#currentIntention) {
         if (oldPlan && DeviateAndPickUpPlan.isTypeOf(oldPlan)) {
@@ -339,7 +344,7 @@ export class BDIAgent {
           }
         }
 
-        await this.#achieveCurrentIntention()
+        await this.#achieveCurrentIntention();
       }
     }
   }
@@ -357,29 +362,29 @@ export class BDIAgent {
     if (GoPickUpIntention.isTypeOf(intention)) {
       const greenTile = this.#internalBelief.tileMap.getGreenTile(new TargetTile(intention.parcelCoordinates));
       if (greenTile) {
-        this.#currentTargetTile = greenTile;
+        this.#internalBelief.currentTargetTile = greenTile;
       }
     }
 
     if (GoPutDownIntention.isTypeOf(intention)) {
       const redTile = this.#internalBelief.tileMap.getRedTile(new TargetTile(intention.deliveryCoordinates));
       if (redTile) {
-        this.#currentTargetTile = redTile;
+        this.#internalBelief.currentTargetTile = redTile;
       }
     }
   }
 
   #selectRandomWeightedPath() {
-    if (!this.#currentTargetTile) {
+    if (!this.#internalBelief.currentTargetTile) {
       return;
     }
 
-    const totalWeight = [...this.#currentTargetTile.pathList.values()]
+    const totalWeight = [...this.#internalBelief.currentTargetTile.pathList.values()]
       .reduce((sum, weightedPath) => sum + weightedPath.weight, 0);
 
     let random = Math.random() * totalWeight;
 
-    for (const [destinationCoordinates, weightedPath] of this.#currentTargetTile.pathList) {
+    for (const [destinationCoordinates, weightedPath] of this.#internalBelief.currentTargetTile.pathList) {
       random -= weightedPath.weight;
 
       if (random < 0) {
@@ -404,8 +409,8 @@ export class BDIAgent {
 
   /** @type { function ({x:number, y:number}, {x:number, y:number}): number } */
   #distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
-    const dx = Math.abs(Math.round(x1) - Math.round(x2))
-    const dy = Math.abs(Math.round(y1) - Math.round(y2))
+    const dx = Math.abs(Math.round(x1) - Math.round(x2));
+    const dy = Math.abs(Math.round(y1) - Math.round(y2));
     return dx + dy;
   }
 
@@ -413,7 +418,7 @@ export class BDIAgent {
    * @param {Intention} intention 
    */
   selectPlan(intention) {
-    for (const plan of this.#planLibrary) {
+    for (const plan of this.#internalBelief.planLibrary) {
       if (plan.isApplicable(intention)) {
         return new plan(this);
       }

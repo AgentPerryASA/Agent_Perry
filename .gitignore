@@ -4,3 +4,4 @@ personalTest
 *.env
 *envDISI
 .prettierignore
+*.old

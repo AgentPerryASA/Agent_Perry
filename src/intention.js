@@ -1,11 +1,14 @@
-/** @typedef Intention @type { GoToIntention | GoPickUpIntention | GoPutDownIntention | DeviateAndPickUpIntention } */
+/** @typedef Intention @type { GoToIntention | GoPickUpIntention | GoPutDownIntention | DeviateAndPickUpIntention | DeviateUsingPlannerIntention | DeviateUsingAStarIntention} */
 /** @typedef IOParcel @type { import("@unitn-asa/deliveroo-js-sdk/server").IOParcel } */
 
+import { Beliefset } from "@unitn-asa/pddl-client";
 import { Coordinates } from "./coordinates.js";
-import { MapPoint } from "./path_finder.js";
+import { MapPoint, PathFinder } from "./path_finder.js";
 
 export class GoToIntention {
+  /**@type {Coordinates} */
   #destinationCoordinates;
+  /**@type {MapPoint[] | undefined} */
   #path;
 
   /**
@@ -42,8 +45,138 @@ export class GoToIntention {
   }
 }
 
+export class DeviateUsingPlannerIntention {
+  /**@type {MapPoint[]} */
+  #currentPath;
+  /**@type {Number}*/
+  #stopPointIndexInPath;
+
+  /**
+   * @param {MapPoint[]} currentPath 
+   * @param {Number} stopPointIndexInPath
+   */
+  constructor(currentPath, stopPointIndexInPath) {
+    this.#currentPath = currentPath;
+    this.#stopPointIndexInPath = stopPointIndexInPath;
+  }
+
+  get currentPath() {
+    return this.#currentPath;
+  }
+
+  get stopPointIndexInPath() {
+    return this.#stopPointIndexInPath;
+  }
+
+  /**
+   * @param {Intention} intention
+   */
+  isEqual(intention) {
+
+    const instance = intention instanceof this.constructor;
+    let arePathEqual = false;
+    if (instance) {
+
+      arePathEqual = /** @type {DeviateUsingPlannerIntention} */ (intention).currentPath.length == this.#currentPath.length;
+
+      if (arePathEqual) {
+        const intentionPath = /** @type {DeviateUsingPlannerIntention} */ (intention).currentPath;
+        const currentPath = this.#currentPath;
+        for (let i = 0; i < this.#currentPath.length; i += 1) {
+          if (currentPath[i].x != intentionPath[i].x || currentPath[i].y != intentionPath[i].y) {
+            arePathEqual = false;
+            break;
+          }
+        }
+      }
+    }
+
+    return instance && arePathEqual;
+
+  }
+
+  /**
+   * @param {Intention} intention 
+   */
+  static isTypeOf(intention) {
+    return intention instanceof this;
+  }
+
+}
+
+export class DeviateUsingAStarIntention {
+
+  /**@type {Coordinates}*/
+  #endPointCoordinates;
+  /**@type {MapPoint[]}*/
+  #blockPoints;
+  /**@type {Coordinates | undefined} startPointCoordinates */
+  #startPointCoordinates;
+
+  /**
+   * @param {Coordinates} endPointCoordinates 
+   * @param {MapPoint[]} blockPoints s
+   * @param {Coordinates | undefined} startPointCoordinates
+   */
+  constructor(endPointCoordinates, blockPoints, startPointCoordinates = undefined) {
+    this.#endPointCoordinates = endPointCoordinates;
+    this.#blockPoints = blockPoints;
+    this.#startPointCoordinates = startPointCoordinates;
+  }
+
+  get endPointCoordinates() {
+    return this.#endPointCoordinates;
+  }
+
+  get blockPoints() {
+    return this.#blockPoints;
+  }
+
+  get startPointCoordinates() {
+    return this.#startPointCoordinates;
+  }
+
+  /**
+   * @param {Intention} intention
+   */
+  isEqual(intention) {
+    const instance = intention instanceof this.constructor;
+    let doCoordinatesMatch = false;
+
+    if (instance) {
+      const inte = /**@type {DeviateUsingAStarIntention}*/(intention);
+
+      doCoordinatesMatch = inte.#endPointCoordinates.x == this.#endPointCoordinates.x && inte.#endPointCoordinates.y == this.#endPointCoordinates.y;
+
+      if (doCoordinatesMatch && this.#blockPoints.length == inte.blockPoints.length) {
+        for (let i = 0; i < this.#blockPoints.length; i += 1) {
+          if (this.#blockPoints[i].x != inte.blockPoints[i].x || this.#blockPoints[i].y != inte.blockPoints[i].y) {
+            doCoordinatesMatch = false;
+            break;
+          }
+        }
+      } else {
+        doCoordinatesMatch = false;
+      }
+
+    }
+
+    return instance && doCoordinatesMatch;
+  }
+
+  /**
+   * @param {Intention} intention 
+   */
+  static isTypeOf(intention) {
+    return intention instanceof this;
+  }
+
+}
+
 export class GoPickUpIntention {
+  /**@type {IOParcel}*/
   #parcel;
+  /**@type {Coordinates}*/
   #parcelCoordinates;
 
   /**
@@ -80,7 +213,9 @@ export class GoPickUpIntention {
 }
 
 export class GoPutDownIntention {
+  /**@type {Coordinates}*/
   #deliveryCoordinates;
+  /**@type {MapPoint[]}*/
   #path;
 
   /**
@@ -118,8 +253,11 @@ export class GoPutDownIntention {
 }
 
 export class DeviateAndPickUpIntention {
+  /**@type {IOParcel} */
   #parcel;
+  /**@type {Coordinates}*/
   #parcelCoordinates;
+  /**@type {Coordinates}*/
   #targetCoordinates;
 
   /**
