@@ -6,6 +6,7 @@
 import { Beliefset } from "@unitn-asa/pddl-client";
 import { Coordinates } from "./coordinates.js";
 import { MapPoint, PathFinder } from "./path_finder.js";
+import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan } from "./plan.js";
 
 export class Me {
   #id;
@@ -161,6 +162,12 @@ export class Beliefs {
   /**@type {Beliefset} */
   #plannerBeliefSet;
 
+  /**@type {(typeof GoToPlan | typeof GoPickUpPlan | typeof GoPutDownPlan | typeof DeviateAndPickUpPlan | typeof DeviateUsingAStarPlan | typeof DeviateUsingPlannerPlan)[]}*/
+  #planLibrary;
+
+  /** @type { TargetTile | undefined } */
+  #currentTargetTile;
+
   constructor() {
     this.#parcelList = [];
     this.#carriedParcelList = [];
@@ -176,6 +183,15 @@ export class Beliefs {
     this.#me = new Me("", "", 0, new Coordinates(0, 0));
     this.#tileWithCrateMap = new Map();
     this.#plannerBeliefSet = new Beliefset();
+    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan];
+  }
+
+  get planLibrary() {
+    return this.#planLibrary;
+  }
+
+  get currentTargetTile() {
+    return this.#currentTargetTile;
   }
 
   get tileMap() {
@@ -197,10 +213,6 @@ export class Beliefs {
   get parcelMinScore() {
     return this.#parcelMinScore;
   }
-
-  /*get nearAgentList() {
-    return this.#nearAgentList;
-  }*/
 
   get me() {
     return this.#me;
@@ -228,6 +240,10 @@ export class Beliefs {
 
   set carriedParcelsCount(n) {
     this.#carriedParcelsCount = n;
+  }
+
+  set currentTargetTile(tile) {
+    this.#currentTargetTile = tile;
   }
 
   clearCarriedParcelList() {

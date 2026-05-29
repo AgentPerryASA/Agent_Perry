@@ -390,12 +390,12 @@ export class GoToPlan extends PlanBase {
         const newPath = await wasDeviationPresent;
         if (newPath.length != 0) {
           //Perform a deep copy of the path if it is valid, otherwise the deviation is not valid
+          console.log("deviate");
           path = [...newPath];
           i = 1;
           step = path[i];
         } else {
           return new BlockPoint(step, i, false);
-
         }
 
       }
@@ -435,9 +435,9 @@ export class GoToPlan extends PlanBase {
         a.coordinates.y = movedVertically.y;
       }
 
-      if (!movedHorizontally && !movedVertically) {
+      if (!movedHorizontally && !movedVertically && (a.coordinates.x != step.x || a.coordinates.y != step.y)) {
         // Agent did not move
-        //console.log("FAIL", movedHorizontally, movedVertically, "from", a.coordinates.x, a.coordinates.y, "to", step.x, step.y);
+        console.log("FAIL", movedHorizontally, movedVertically, "from", a.coordinates.x, a.coordinates.y, "to", step.x, step.y);
 
         if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
           //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
