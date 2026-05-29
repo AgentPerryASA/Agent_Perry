@@ -79,6 +79,7 @@ export class PathFinder {
    * @param {MapPoint} point
    */
   removePoint(point) {
+
     this.#algorithm.removePoint(point);
   }
 }

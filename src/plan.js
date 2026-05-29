@@ -205,14 +205,26 @@ export class GoToPlan extends PlanBase {
 
     do {
       if (blockPoint) {
-        //Check whether the blockPoint is a 5 or 5! tile: in such case, a crate is present and the planner need to be invoked. The planner need to guide the agent until the next cell in the already existent path that is not a 5 or 5! tile.
 
         if (this.isStopped) {
           this.isRunning = false;
           return false;
         }
 
+        //If the blockpoint is in the target tile, wait one second and try again
+        const blockPointTile = path[blockPoint.indexOfPath];
+
+        if (blockPointTile.x == end.x && blockPointTile.y == end.y) {
+          await new Promise(res => setTimeout(res, 1000));
+          continue;
+        }
+
+        //Clear the alternative path map
+        this.#alternativePath.clear();
+
         let wasPlannerUsed = false;
+
+        //Check whether the blockPoint is a 5 or 5! tile: in such case, a crate is present and the planner need to be invoked. The planner need to guide the agent until the next cell in the already existent path that is not a 5 or 5! tile.
         if (blockPoint.isTileYellow) {
 
           const subIntention = new DeviateUsingPlannerIntention(path, blockPoint.indexOfPath - 1);
@@ -390,7 +402,6 @@ export class GoToPlan extends PlanBase {
         const newPath = await wasDeviationPresent;
         if (newPath.length != 0) {
           //Perform a deep copy of the path if it is valid, otherwise the deviation is not valid
-          console.log("deviate");
           path = [...newPath];
           i = 1;
           step = path[i];
@@ -416,7 +427,8 @@ export class GoToPlan extends PlanBase {
         movedHorizontally = await this.agent.socket.emitMove("left");
       }
 
-      if (movedHorizontally) {
+      //Check necessary to avoid missing update when coordinate is 0
+      if (movedHorizontally != undefined && movedHorizontally !== false) {
         a.coordinates.x = movedHorizontally.x;
       }
 
@@ -425,19 +437,20 @@ export class GoToPlan extends PlanBase {
         return;
       }
 
+      //Check necessary to avoid missing update when coordinate is 0
       if (a.coordinates.y < step.y) {
         movedVertically = await this.agent.socket.emitMove("up");
       } else if (a.coordinates.y > step.y) {
         movedVertically = await this.agent.socket.emitMove("down");
       }
 
-      if (movedVertically) {
+      if (movedVertically != undefined && movedVertically !== false) {
         a.coordinates.y = movedVertically.y;
       }
 
       if (!movedHorizontally && !movedVertically && (a.coordinates.x != step.x || a.coordinates.y != step.y)) {
         // Agent did not move
-        console.log("FAIL", movedHorizontally, movedVertically, "from", a.coordinates.x, a.coordinates.y, "to", step.x, step.y);
+        //console.log("FAIL", movedHorizontally, movedVertically, "from", a.coordinates.x, a.coordinates.y, "to", step.x, step.y);
 
         if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
           //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate

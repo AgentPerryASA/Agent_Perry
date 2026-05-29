@@ -103,7 +103,7 @@ export class Agent {
       await this.#pushIntention(bestIntention);
     }
   }
-  #lol = 0;
+
   #selectBestIntention() {
     const goPutDownIntention = this.#getFirstInstanceOfTypeInQueue(GoPutDownIntention);
     // Check if any deviation is possible only if our main intention is to delivery
@@ -257,8 +257,7 @@ export class Agent {
       }
 
       const oldPlan = this.#currentPlan;
-      let popped = this.#intentionPlanQueue.pop();
-      console.log(popped);
+      this.#intentionPlanQueue.pop();
 
       if (this.#currentIntention) {
         if (oldPlan && DeviateAndPickUpPlan.isTypeOf(oldPlan)) {
