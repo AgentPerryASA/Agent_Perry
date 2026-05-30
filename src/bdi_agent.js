@@ -2,17 +2,22 @@
 /** @typedef Plan @type { import('./plan.js').Plan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 /** @typedef Message @type { import("./message.js").Message } */
+/** @typedef LLMIntention @type {import("./llm_intention.js").LLMIntention} */
+
 
 import 'dotenv/config';
 import { Coordinates } from "./coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs, TargetTile } from "./belief.js";
-import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
-import { HandshakeMessage, ActionMessage, MessageType, BDIRespondeMessage } from './message.js';
+import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
+import { HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage } from './message.js';
+import { LLMGoToIntention } from './llm_intention.js';
 
 export class BDIAgent {
   #socket;
+  /** @type { LLMIntention | undefined } */
+  #llmIntention;
   /** @type { {intention: Intention, plan: Plan}[] } */
   #intentionPlanQueue;
   /** @type { Beliefs } */
@@ -123,7 +128,7 @@ export class BDIAgent {
 
     // @ts-ignore
     switch (message.type) {
-      case MessageType.HandshakeMessage:
+      case HandshakeMessage.TYPE:
         // @ts-ignore
         msg = new HandshakeMessage(message)
         if (msg.key == process.env.HANDSHAKE_KEY) {
@@ -131,16 +136,23 @@ export class BDIAgent {
           // console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`)
         }
         break;
-      case MessageType.ActionMessage:
+      case LLMIntentionMessage.TYPE:
         // The message is from the LLM agent
         // @ts-ignore
-        msg = new ActionMessage(message);
-        console.log(`${this.#internalBelief.me.name} received (${msg.action}, ${msg.actionInput}) from LLM`)
+        msg = new LLMIntentionMessage(message);
+        console.log(`${this.#internalBelief.me.name} received (${msg.intention}}) from LLM`)
+
+        this.#llmIntention = msg.intention;
 
         // this.#sendToMate(`Do (${msg.action}, ${msg.actionInput})`);
-        const response = new BDIRespondeMessage({ content: "No thanks" });
-        this.#sendToLLM(response);
+        // const response = new BDIRespondeMessage({ content: "No thanks" });
+        // this.#sendToLLM(response);
         break;
+      case LLMIntentionTakenChargeMessage.TYPE:
+        // @ts-ignore
+        msg = new LLMIntentionTakenChargeMessage(message);
+        // TODO: ok, I know what the other agent is doing
+        break
       default:
         msg = String(message);
         if (msg) {
@@ -174,7 +186,23 @@ export class BDIAgent {
   }
 
   async #generateBestIntention() {
-    const bestIntention = this.#selectBestIntention();
+    let bestIntention = this.#selectBestIntention();
+
+    if (this.#llmIntention) {
+      bestIntention = this.#checkLLMIntention();
+
+      // TODO: revision
+
+      // In case this agent decided to take charge the LLM intention ...
+      const message = new LLMIntentionTakenChargeMessage({ intention: this.#llmIntention });
+      this.#sendToMate(message);
+
+      // ... otherwise, forward the LLM intention to him
+      const msg = new LLMIntentionMessage({ intention: this.#llmIntention });
+      this.#sendToMate(msg);
+
+      // TODO: respond to LLM about any decision?
+    }
 
     if (bestIntention) {
       await this.#pushIntention(bestIntention);
@@ -286,6 +314,14 @@ export class BDIAgent {
     const randomTileIndex = Math.floor(Math.random() * greenTilesCount);
     const green = this.#internalBelief.tileMap.greenTiles[randomTileIndex];
     return new GoToIntention(green.coordinates);
+  }
+
+  #checkLLMIntention() {
+    if (this.#llmIntention && LLMGoToIntention.isTypeOf(this.#llmIntention)) {
+      // TODO: check
+
+      return new GoToIntention(this.#llmIntention.destinationCoordinates);
+    }
   }
 
   /**

@@ -1,9 +1,8 @@
 /** @typedef Intention @type { GoToIntention | GoPickUpIntention | GoPutDownIntention | DeviateAndPickUpIntention | DeviateUsingPlannerIntention | DeviateUsingAStarIntention} */
 /** @typedef IOParcel @type { import("@unitn-asa/deliveroo-js-sdk/server").IOParcel } */
 
-import { Beliefset } from "@unitn-asa/pddl-client";
 import { Coordinates } from "./coordinates.js";
-import { MapPoint, PathFinder } from "./path_finder.js";
+import { MapPoint } from "./path_finder.js";
 
 export class GoToIntention {
   /**@type {Coordinates} */

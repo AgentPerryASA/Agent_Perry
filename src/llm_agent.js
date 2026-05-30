@@ -3,7 +3,8 @@
 import "dotenv/config";
 import OpenAI from "openai";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk";
-import { ActionMessage, BDIRespondeMessage, MessageType } from "./message.js";
+import { LLMIntentionMessage, BDIResponseMessage, HandshakeMessage } from "./message.js";
+import { LLMGoToIntention } from "./llm_intention.js";
 
 export class LLMAgent {
   #socket;
@@ -50,11 +51,11 @@ export class LLMAgent {
       You are an AI assistant.
 
       Available tools:
-      - goTo(dstX, dstY): move the user to the destination (dstX, dstY)
+      - ${LLMGoToIntention.TYPE}(dstX, dstY): move the user to the destination (dstX, dstY)
 
       If the user asks for something that requires movement, respond exactly in this format:
 
-      Action: goTo
+      Action: ${LLMGoToIntention.TYPE}
       Action Input: (dstX, dstY)
 
       If no tool is needed, answer normally.
@@ -98,8 +99,19 @@ export class LLMAgent {
         console.log("LLM Agent received the action:")
         console.log(parsedAction)
 
-        const msg = new ActionMessage(parsedAction);
-        this.#sendToAgent(msg);
+        let msg;
+        let intention;
+        switch (parsedAction.action) {
+          case LLMGoToIntention.TYPE:
+            const destinationCoordinates = LLMGoToIntention.parseInput(parsedAction.actionInput);
+            msg = new LLMGoToIntention(destinationCoordinates);
+            break
+        }
+
+        if (intention) {
+          msg = new LLMIntentionMessage(intention);
+          this.#sendToAgent(msg);
+        }
       }
 
       return;
@@ -117,13 +129,13 @@ export class LLMAgent {
 
     // @ts-ignore
     switch (message.type) {
-      case MessageType.HandshakeMessage:
+      case HandshakeMessage.TYPE:
         break;
-      case MessageType.ActionMessage:
+      case LLMIntentionMessage.TYPE:
         break;
-      case MessageType.BDIRespondeMessage:
+      case BDIResponseMessage.TYPE:
         // @ts-ignore
-        msg = new BDIRespondeMessage(message);
+        msg = new BDIResponseMessage(message);
         console.log(`LLM received "${msg.content}" from ${name}`)
         break
     }
@@ -168,7 +180,7 @@ export class LLMAgent {
     let observation;
 
     // Execute the selected tool
-    if (action == "goTo") {
+    if (action == LLMGoToIntention.TYPE) {
       console.log(`[System executing tool: ${action} ("${actionInput}")]`);
       observation = "MOVE"; // actual action for the BDI agent
     } else {

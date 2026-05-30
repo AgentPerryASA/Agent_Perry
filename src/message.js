@@ -1,12 +1,9 @@
-/** @typedef Message @type { HandshakeMessage | ActionMessage | BDIRespondeMessage } */
-
-export const MessageType = {
-  HandshakeMessage: "handshake",
-  ActionMessage: "action",
-  BDIRespondeMessage: "bdiresponse"
-}
+/** @typedef Message @type { HandshakeMessage | LLMIntentionMessage | LLMIntentionTakenChargeMessage | BDIResponseMessage } */
+/** @typedef LLMIntention @type {import("./llm_intention.js").LLMIntention} */
 
 export class HandshakeMessage {
+  static #TYPE = "handshake";
+
   type;
   key;
 
@@ -14,27 +11,56 @@ export class HandshakeMessage {
    * @param {{key: string}} message
    */
   constructor({ key }) {
-    this.type = MessageType.HandshakeMessage;
+    this.type = HandshakeMessage.TYPE;
     this.key = key;
   }
-}
 
-export class ActionMessage {
-  type;
-  action;
-  actionInput;
-
-  /**
-   * @param {{action: string, actionInput: string}} message
-   */
-  constructor({ action, actionInput }) {
-    this.type = MessageType.ActionMessage
-    this.action = action;
-    this.actionInput = actionInput;
+  static get TYPE() {
+    return HandshakeMessage.#TYPE;
   }
 }
 
-export class BDIRespondeMessage {
+export class LLMIntentionMessage {
+  static #TYPE = "llmintention"
+
+  type;
+  intention;
+
+  /**
+   * @param {{intention: LLMIntention}} message
+   */
+  constructor({ intention }) {
+    this.type = LLMIntentionMessage.TYPE;
+    this.intention = intention;
+  }
+
+  static get TYPE() {
+    return LLMIntentionMessage.#TYPE;
+  }
+}
+
+export class LLMIntentionTakenChargeMessage {
+  static #TYPE = "llmintentiontakencharge"
+
+  type;
+  intention;
+
+  /**
+   * @param {{intention: LLMIntention}} message
+   */
+  constructor({ intention }) {
+    this.type = BDIResponseMessage.TYPE;
+    this.intention = intention;
+  }
+
+  static get TYPE() {
+    return LLMIntentionTakenChargeMessage.#TYPE;
+  }
+}
+
+export class BDIResponseMessage {
+  static #TYPE = "bdiresponse"
+
   type;
   content;
 
@@ -42,7 +68,11 @@ export class BDIRespondeMessage {
    * @param {{content: string}} message
    */
   constructor({ content }) {
-    this.type = MessageType.BDIRespondeMessage;
+    this.type = BDIResponseMessage.TYPE;
     this.content = content;
+  }
+
+  static get TYPE() {
+    return BDIResponseMessage.#TYPE;
   }
 }
