@@ -16,7 +16,10 @@ export class Admin {
   async #send() {
     await new Promise(res => setTimeout(res, 2000));
 
-    console.log("ADMIN: task requested")
-    this.#socket.emitShout("Move to coordinate (4,7)");
+    const task = 'Go to one of these coordiates [("x":11,"y":12),("x":12,"y":12),("x":13,"y":12)} and receives one bouns of 500pts';
+
+    console.log("ADMIN:", task);
+
+    this.#socket.emitShout(task);
   }
 }

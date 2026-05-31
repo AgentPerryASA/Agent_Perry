@@ -137,18 +137,26 @@ export class BDIAgent {
         }
         break;
       case LLMIntentionMessage.TYPE:
-        // The message is from the LLM agent
+        // TODO: No way to know if it is sent by LLM or other agent, #llmIntention is null
+
+        if (message.intention.type == LLMGoToIntention.TYPE) {
+          this.#llmIntention = new LLMGoToIntention(message.intention.destinationCoordinates);
+          msg = new LLMIntentionMessage({ intention: this.#llmIntention });
+        }
+
         // @ts-ignore
-        msg = new LLMIntentionMessage(message);
+        // msg = new LLMIntentionMessage(message);
         console.log(`${this.#internalBelief.me.name} received (${msg.intention}}) from LLM`)
 
-        this.#llmIntention = msg.intention;
+        // this.#llmIntention = msg.intention;
 
         // this.#sendToMate(`Do (${msg.action}, ${msg.actionInput})`);
         // const response = new BDIRespondeMessage({ content: "No thanks" });
         // this.#sendToLLM(response);
         break;
       case LLMIntentionTakenChargeMessage.TYPE:
+        console.log(`${this.#internalBelief.me.name} OK`)
+        // The other agent has taken charge the LLM intention
         // @ts-ignore
         msg = new LLMIntentionTakenChargeMessage(message);
         // TODO: ok, I know what the other agent is doing
@@ -185,21 +193,32 @@ export class BDIAgent {
     )
   }
 
+  #teo = false;
   async #generateBestIntention() {
     let bestIntention = this.#selectBestIntention();
 
-    if (this.#llmIntention) {
-      bestIntention = this.#checkLLMIntention();
+    if (this.#llmIntention && !this.#teo) {
+      const llmIntentionConverted = this.#convertLLMIntention();
+      console.log(llmIntentionConverted)
 
-      // TODO: revision
+      if (llmIntentionConverted) {
+        // In case this agent decided to take charge the LLM intention ...
+        bestIntention = llmIntentionConverted;
 
-      // In case this agent decided to take charge the LLM intention ...
-      const message = new LLMIntentionTakenChargeMessage({ intention: this.#llmIntention });
-      this.#sendToMate(message);
+        console.log(`${this.#internalBelief.me.name} has taken charge LLM intention`)
 
-      // ... otherwise, forward the LLM intention to him
-      const msg = new LLMIntentionMessage({ intention: this.#llmIntention });
-      this.#sendToMate(msg);
+        const message = new LLMIntentionTakenChargeMessage({ intention: this.#llmIntention });
+        this.#sendToMate(message);
+
+        this.#teo = true;
+      } else {
+        // ... otherwise, forward the LLM intention to the mate
+        const message = new LLMIntentionMessage({ intention: this.#llmIntention });
+
+        this.#sendToMate(message);
+
+        this.#llmIntention = undefined;
+      }
 
       // TODO: respond to LLM about any decision?
     }
@@ -316,9 +335,9 @@ export class BDIAgent {
     return new GoToIntention(green.coordinates);
   }
 
-  #checkLLMIntention() {
-    if (this.#llmIntention && LLMGoToIntention.isTypeOf(this.#llmIntention)) {
-      // TODO: check
+  #convertLLMIntention() {
+    if (this.#llmIntention && this.#llmIntention.type == LLMGoToIntention.TYPE) {
+      // TODO: revision
 
       return new GoToIntention(this.#llmIntention.destinationCoordinates);
     }
@@ -346,11 +365,11 @@ export class BDIAgent {
 
     // If a GoToIntention was stopped, pop it (no need to be maintained in the queue)
     if (this.#currentIntention && GoToIntention.isTypeOf(this.#currentIntention)) {
-      console.log("pop ", this.#currentIntention);
+      // console.log("pop ", this.#currentIntention);
       this.#intentionPlanQueue.pop();
     }
 
-    console.log("push ", intention, this.#intentionPlanQueue);
+    // console.log("push ", intention, this.#intentionPlanQueue);
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
 
     await this.#achieveCurrentIntention();

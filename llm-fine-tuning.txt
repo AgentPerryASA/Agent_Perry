@@ -1,0 +1,16 @@
+input:
+- score
+- penalty ?
+- decay ?
+- max parcel
+- max score
+- number of agents
+- number of "do-while" in GoTo
+- types of random functions
+
+hyperparams:
+- number possible deviations (T)
+- number blocks after agent (T)
+- delay per each movement (decrease in case of many agents) (T)
+- choose function to randomize GoTo (e.g. between cos and hyperbola) (P)
+- multiplier for minScore (P)

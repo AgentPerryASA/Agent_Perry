@@ -1,7 +1,6 @@
 /** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan | DeviateUsingAStarPlan | DeviateUsingPlannerPlan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
-import { start } from "repl";
 import { BDIAgent } from "./bdi_agent.js";
 import { Coordinates } from "./coordinates.js";
 import {
@@ -444,7 +443,7 @@ export class GoToPlan extends PlanBase {
         movedVertically = await this.agent.socket.emitMove("down");
       }
 
-      if (movedVertically != undefined && movedVertically !== false) {
+      if (movedVertically != undefined && movedVertically != false) {
         a.coordinates.y = movedVertically.y;
       }
 
@@ -491,7 +490,7 @@ export class DeviateUsingAStarPlan extends PlanBase {
   #path;
 
   /**
-   * @param {Agent} agent
+   * @param {BDIAgent} agent
    */
   constructor(agent) {
     super(agent);
@@ -548,7 +547,7 @@ export class DeviateUsingPlannerPlan extends PlanBase {
   #path;
 
   /**
-   * @param {Agent} agent
+   * @param {BDIAgent} agent
    */
   constructor(agent) {
     super(agent);

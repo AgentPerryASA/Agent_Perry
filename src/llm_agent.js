@@ -104,12 +104,12 @@ export class LLMAgent {
         switch (parsedAction.action) {
           case LLMGoToIntention.TYPE:
             const destinationCoordinates = LLMGoToIntention.parseInput(parsedAction.actionInput);
-            msg = new LLMGoToIntention(destinationCoordinates);
+            intention = new LLMGoToIntention(destinationCoordinates);
             break
         }
 
         if (intention) {
-          msg = new LLMIntentionMessage(intention);
+          msg = new LLMIntentionMessage({ intention: intention });
           this.#sendToAgent(msg);
         }
       }

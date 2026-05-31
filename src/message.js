@@ -11,7 +11,7 @@ export class HandshakeMessage {
    * @param {{key: string}} message
    */
   constructor({ key }) {
-    this.type = HandshakeMessage.TYPE;
+    this.type = HandshakeMessage.#TYPE;
     this.key = key;
   }
 
@@ -49,7 +49,7 @@ export class LLMIntentionTakenChargeMessage {
    * @param {{intention: LLMIntention}} message
    */
   constructor({ intention }) {
-    this.type = BDIResponseMessage.TYPE;
+    this.type = LLMIntentionTakenChargeMessage.#TYPE;
     this.intention = intention;
   }
 
@@ -68,7 +68,7 @@ export class BDIResponseMessage {
    * @param {{content: string}} message
    */
   constructor({ content }) {
-    this.type = BDIResponseMessage.TYPE;
+    this.type = BDIResponseMessage.#TYPE;
     this.content = content;
   }
 

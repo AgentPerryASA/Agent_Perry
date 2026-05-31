@@ -1,7 +1,6 @@
 import { Beliefset, onlineSolver, PddlProblem } from "@unitn-asa/pddl-client";
 import path from "path";
 import fs from "fs";
-import { Agent } from "./agent.js";
 
 /**
  *
