@@ -20,6 +20,7 @@ export class LLMAgent {
 
   #ACTION_PROMPT;
   #FINAL_ANSWER_PROMPT;
+  #INTRO_PROMPT;
   #messages;
 
   /**
@@ -59,6 +60,29 @@ export class LLMAgent {
       Action Input: (dstX, dstY)
 
       If no tool is needed, answer normally.
+      `.trim();
+
+    this.#INTRO_PROMPT = `
+      You are an AI assistant which goal is to fine tune some parameters of our agent in order to increase the performance in game.
+      The game consists of some BDI agents that have to deliver parcels to get points. Pracels spawn randomly on green tiles and the agents
+      have to deliver them on red ones. You will periodically receive these data as input in this exactly order:
+
+      - score of our agent
+      - max number of parcel can spawn in map
+      - max score per parcel
+      - number of agents
+      - mean of attempts to follow a path
+      - types of functions to select random destination tiles (used to explore the map)
+
+      Together with the previous parameters' value, in this exactly order:
+
+      - number of possible deviations to pick up a parcel (between 2 and 5)
+      - number of tiles to ignore after an obstacle on the path (between 2 and 4)
+      - delay in sending movement request to the server (between 0 and 100 ms)
+      - type of function to randomize the destination (either cosine or hyperbola)
+      - multiplier m to get parcelMinScore = parcelMaxScore * m (between 0.2 and 0.6)
+
+      You are requested to provide new values for each parameter if useful to improve performance.
       `.trim();
 
     this.#FINAL_ANSWER_PROMPT = `
@@ -154,6 +178,8 @@ export class LLMAgent {
       role: "user",
       content: task,
     });
+
+    console.log(this.#messages)
 
     // Ask the model whether it wants to answer directly or use a tool.
     const assistantDecision = await this.#callModel(this.#messages);
