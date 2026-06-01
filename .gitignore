@@ -5,3 +5,4 @@ personalTest
 *envDISI
 .prettierignore
 *.old
+*.log

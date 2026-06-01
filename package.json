@@ -20,7 +20,8 @@
   "scripts": {
     "test": "clear; node src/test/test.js",
     "build": "npm install",
-    "start": "clear; node main.js"
+    "start": "clear; node main.js",
+    "log": "clear; node main.js | tee run.log"
   },
   "dependencies": {
     "@unitn-asa/deliveroo-js-sdk": "^1.3.0",

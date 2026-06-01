@@ -109,7 +109,7 @@ export class DeviateUsingAStarIntention {
   #endPointCoordinates;
   /**@type {MapPoint[]}*/
   #blockPoints;
-  /**@type {Coordinates | undefined} startPointCoordinates */
+  /**@type {Coordinates | undefined} */
   #startPointCoordinates;
 
   /**

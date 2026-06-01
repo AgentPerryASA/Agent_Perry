@@ -130,7 +130,7 @@ export class BDIAgent {
     switch (message.type) {
       case HandshakeMessage.TYPE:
         // @ts-ignore
-        msg = new HandshakeMessage(message)
+        msg = new HandshakeMessage(message);
         if (msg.key == process.env.HANDSHAKE_KEY) {
           this.#internalBelief.mateId = id;
           // console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`)
@@ -146,7 +146,7 @@ export class BDIAgent {
 
         // @ts-ignore
         // msg = new LLMIntentionMessage(message);
-        console.log(`${this.#internalBelief.me.name} received (${msg.intention}}) from LLM`)
+        console.log(`${this.#internalBelief.me.name} received (${msg.intention}}) from LLM`);
 
         // this.#llmIntention = msg.intention;
 
@@ -155,16 +155,16 @@ export class BDIAgent {
         // this.#sendToLLM(response);
         break;
       case LLMIntentionTakenChargeMessage.TYPE:
-        console.log(`${this.#internalBelief.me.name} OK`)
+        console.log(`${this.#internalBelief.me.name} OK`);
         // The other agent has taken charge the LLM intention
         // @ts-ignore
         msg = new LLMIntentionTakenChargeMessage(message);
         // TODO: ok, I know what the other agent is doing
-        break
+        break;
       default:
         msg = String(message);
         if (msg) {
-          console.log(`${this.#internalBelief.me.name} received ${msg} from ${name}`)
+          console.log(`${this.#internalBelief.me.name} received ${msg} from ${name}`);
         }
     }
 
@@ -180,7 +180,7 @@ export class BDIAgent {
       // so this will be received only by the LLM if associated to this agent
       this.#internalBelief.me.id,
       message
-    )
+    );
   }
 
   /**
@@ -190,7 +190,7 @@ export class BDIAgent {
     this.#socket.emitSay(
       this.#internalBelief.mateId,
       message
-    )
+    );
   }
 
   #teo = false;
@@ -199,13 +199,13 @@ export class BDIAgent {
 
     if (this.#llmIntention && !this.#teo) {
       const llmIntentionConverted = this.#convertLLMIntention();
-      console.log(llmIntentionConverted)
+      console.log(llmIntentionConverted);
 
       if (llmIntentionConverted) {
         // In case this agent decided to take charge the LLM intention ...
         bestIntention = llmIntentionConverted;
 
-        console.log(`${this.#internalBelief.me.name} has taken charge LLM intention`)
+        console.log(`${this.#internalBelief.me.name} has taken charge LLM intention`);
 
         const message = new LLMIntentionTakenChargeMessage({ intention: this.#llmIntention });
         this.#sendToMate(message);
@@ -365,11 +365,9 @@ export class BDIAgent {
 
     // If a GoToIntention was stopped, pop it (no need to be maintained in the queue)
     if (this.#currentIntention && GoToIntention.isTypeOf(this.#currentIntention)) {
-      // console.log("pop ", this.#currentIntention);
       this.#intentionPlanQueue.pop();
     }
 
-    // console.log("push ", intention, this.#intentionPlanQueue);
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
 
     await this.#achieveCurrentIntention();
