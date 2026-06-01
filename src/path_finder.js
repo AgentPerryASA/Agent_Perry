@@ -1,10 +1,8 @@
 import { Beliefset, onlineSolver, PddlProblem } from "@unitn-asa/pddl-client";
 import path from "path";
 import fs from "fs";
-import { Agent } from "./agent.js";
 
 /**
- *
  * @param {string} filePath
  */
 async function readFile(filePath) {
@@ -60,9 +58,9 @@ export class PathFinder {
 
     if (!this.#pddlDomainString) {
       //Recover domain file
-      const __filename = path.resolve(process.argv[1]);
-      const __dirname = path.dirname(__filename);
-      const filePath = path.join(__dirname, "./src/planner/domain.pddl");
+      const filename = path.resolve(process.argv[1]);
+      const dirname = path.dirname(filename);
+      const filePath = path.join(dirname, "./src/planner/domain.pddl");
       this.#pddlDomainString = await readFile(filePath);
     }
 
@@ -79,7 +77,6 @@ export class PathFinder {
    * @param {MapPoint} point
    */
   removePoint(point) {
-
     this.#algorithm.removePoint(point);
   }
 }
@@ -120,12 +117,12 @@ class Astar {
   /**
    * @param {{x:number, y:number}} startPoint
    * @param {{x:number, y:number}} endPoint
-   * @param {MapPoint[] | undefined} pointToIgnore
+   * @param {MapPoint[] | undefined} pointsToIgnoreList
    * @returns The shortest path from startPoint to endPoint in Manhattan distance
    */
-  search(startPoint, endPoint, pointToIgnore = undefined) {
+  search(startPoint, endPoint, pointsToIgnoreList = undefined) {
     // Clean points info (parent and functions) before a new run
-    this.#cleanForNewSearch(pointToIgnore);
+    this.#cleanForNewSearch(pointsToIgnoreList);
 
     const start = this.#map[startPoint.x][startPoint.y];
     const end = this.#map[endPoint.x][endPoint.y];
@@ -186,9 +183,9 @@ class Astar {
   }
 
   /**
-   * @param {MapPoint[] | undefined} pointToIgnore
+   * @param {MapPoint[] | undefined} pointsToIgnoreList
    */
-  #cleanForNewSearch(pointToIgnore = undefined) {
+  #cleanForNewSearch(pointsToIgnoreList = undefined) {
     // Clean points info (parent and functions)
     const cols = this.#map.length;
     const rows = this.#map[0].length;
@@ -198,22 +195,22 @@ class Astar {
       }
     }
 
-    if (pointToIgnore) {
-      for (const point of pointToIgnore) {
-        this.#ignorePoint(point, pointToIgnore, true);
+    if (pointsToIgnoreList) {
+      for (const point of pointsToIgnoreList) {
+        this.#ignorePoint(point, pointsToIgnoreList, true);
       }
     }
   }
 
   /**
    * @param {MapPoint} point
-   * @param {MapPoint[] | undefined} pointsToIgnore
+   * @param {MapPoint[] | undefined} pointsToIgnoreList
    * @param {boolean} resetAfterTimeout
    */
-  #ignorePoint(point, pointsToIgnore, resetAfterTimeout) {
+  #ignorePoint(point, pointsToIgnoreList, resetAfterTimeout) {
     // Update the neighbors of the point so that they ignore it, namely do not put the point as their neighbor
     for (const neighbor of point.neighbors) {
-      neighbor.updateNeighbors(this.#map, pointsToIgnore);
+      neighbor.updateNeighbors(this.#map, pointsToIgnoreList);
     }
 
     if (resetAfterTimeout) {
@@ -287,14 +284,14 @@ export class MapPoint {
 
   /**
    * @param {MapPoint} point
-   * @param {MapPoint[] | undefined} pointList 
+   * @param {MapPoint[] | undefined} pointsList 
    */
-  #isPointInList(point, pointList) {
-    if (pointList == undefined) {
+  #isPointInList(point, pointsList) {
+    if (pointsList == undefined || pointsList.length == 0) {
       return false;
     }
 
-    for (const p of pointList) {
+    for (const p of pointsList) {
       if (point.isEqual(p)) {
         return true;
       }
@@ -305,9 +302,9 @@ export class MapPoint {
 
   /**
    * @param {MapPoint[][]} map
-   * @param {MapPoint[] | undefined} pointToIgnore
+   * @param {MapPoint[] | undefined} pointsToIgnoreList
    */
-  updateNeighbors(map, pointToIgnore = undefined) {
+  updateNeighbors(map, pointsToIgnoreList = undefined) {
     this.#neighbors = [];
 
     if (this.#w == "0") return;
@@ -318,7 +315,7 @@ export class MapPoint {
     // Above
     if (
       j < map[0].length - 1 && // A tile above exists
-      !this.#isPointInList(map[i][j + 1], pointToIgnore) && // The tile above does not have to be ignored
+      !this.#isPointInList(map[i][j + 1], pointsToIgnoreList) && // The tile above does not have to be ignored
       map[i][j + 1].w != "0" && // The tile above is walkable
       map[i][j + 1].w != "↓" && // The tile above allows to move up
       this.#w != "↓" // This tile allows to move up
@@ -329,7 +326,7 @@ export class MapPoint {
     // Below
     if (
       j > 0 && // A tile below exists
-      !this.#isPointInList(map[i][j - 1], pointToIgnore) && // The tile below does not have to be ignored
+      !this.#isPointInList(map[i][j - 1], pointsToIgnoreList) && // The tile below does not have to be ignored
       map[i][j - 1].w != "0" && // The tile below si walkable
       map[i][j - 1].w != "↑" && // The tile below allows to move down
       this.#w != "↑" // This tile allows to move down
@@ -340,7 +337,7 @@ export class MapPoint {
     // Right
     if (
       i < map.length - 1 && // A tile on the right exists
-      !this.#isPointInList(map[i + 1][j], pointToIgnore) && // The tile on the right does not have to be ignored
+      !this.#isPointInList(map[i + 1][j], pointsToIgnoreList) && // The tile on the right does not have to be ignored
       map[i + 1][j].w != "0" && // The tile on the right is walkable
       map[i + 1][j].w != "←" && // The tile on the right allows to move right
       this.#w != "←" // This tile allows to move right
@@ -351,7 +348,7 @@ export class MapPoint {
     // Left
     if (
       i > 0 && // A tile on the left exists
-      !this.#isPointInList(map[i - 1][j], pointToIgnore) && // The tile on the left does not have to be ignored
+      !this.#isPointInList(map[i - 1][j], pointsToIgnoreList) && // The tile on the left does not have to be ignored
       map[i - 1][j].w != "0" && // The tile on the left is walkable
       map[i - 1][j].w != "→" && // The tile on the left allows to move left
       this.#w != "→" // This tile allows to move left
@@ -365,6 +362,10 @@ export class MapPoint {
     this.g = 0;
     this.h = 0;
     this.parent = undefined;
+  }
+
+  toString() {
+    return `${this.x}, ${this.y}`;
   }
 
   /**

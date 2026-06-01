@@ -1,7 +1,6 @@
 /** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan | DeviateUsingAStarPlan | DeviateUsingPlannerPlan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
-import { start } from "repl";
 import { Agent } from "./agent.js";
 import { Coordinates } from "./coordinates.js";
 import {
@@ -174,7 +173,7 @@ export class GoToPlan extends PlanBase {
   #TILES_TO_IGNORE_FOR_AGENTS = 2;
   #moveAttemptCount;
   /**
-  * Map of alternative path. Id is String(tile.x)+String(tile.y). Contains the path or a promise
+  * Map of alternative path. Id is `${tile.x}, ${tile.y}`. Value is the path or a Promise for the path.
   * @type {Map<String,Promise<MapPoint[]>>}
   * */
   #alternativePath;
@@ -349,13 +348,13 @@ export class GoToPlan extends PlanBase {
   async #searchAndStoreDeviation(path, aheadTileIndex) {
     //Retrieve the tile for which a deviation is needed
     const aheadTile = path[aheadTileIndex];
-    const aheadTileCoordinatesToString = String(aheadTile.x) + String(aheadTile.y);
+    const aheadTileCoordinatesToString = aheadTile.toString();
 
     //Retrieve position when the deviation will be needed
     const futureAgentPosition = path[aheadTileIndex - 1];
     const futureAgentPositionCoordinates = new Coordinates(futureAgentPosition.x, futureAgentPosition.y);
 
-    //Retrieve the ending point
+    //Retrieve the ending point (destination)
     const endPoint = path[path.length - 1];
     const endPointCoordinates = new Coordinates(endPoint.x, endPoint.y);
 
@@ -414,24 +413,24 @@ export class GoToPlan extends PlanBase {
         return;
       }
 
+      //Recover the supposed next step (in other words, the tile)
       let step = path[i];
+      let nearbyAgent = this.#searchNearbyAgent(path, i);
+      let stepCoordinates = new Coordinates(step.x, step.y);
+      let currentTileCoordinatesToString = stepCoordinates.toString();
 
-      let coordinates = new Coordinates(step.x, step.y);
 
-      if (!step.insertedByPlanner && this.agent.internalBelief.tileMap.getYellowTile(coordinates) && this.agent.internalBelief.isTileWithCrate(coordinates)) {
+      if (!step.insertedByPlanner && this.agent.internalBelief.tileMap.getYellowTile(stepCoordinates) && this.agent.internalBelief.isTileWithCrate(stepCoordinates)) {
         //Stop the execution immediately if the tile was not set by the planner, it is yellow and has a crate over it: this avoid calling the planner if the tile is yellow but no crate are on it, therefore for it being a walkable tile
         return new BlockPoint(path, step, i, true);
       }
 
       //Check for the present of an agent in next tiles. First check for a future tile two tile ahead, next check the next cell (situation could have change and the change of path could be no longer necessary or it could require an updated one). To repeat the search later without declaring another variable, this is not left as a const
-      let nearbyAgent = this.#searchNearbyAgent(path, i);
-
       if (nearbyAgent.nearbyAgentDetected && nearbyAgent.aheadTileIndex) {
         await this.#searchAndStoreDeviation(path, nearbyAgent.aheadTileIndex);
       }
 
       //Check if the current "next" tile has a deviation: in such case check whether the agent is still there or in one of the next tiles, if not ignores. While this search is perfectly equivalent to the one before, the environment change very frequently
-      const currentTileCoordinatesToString = String(path[i].x) + String(path[i].y);
       const wasDeviationPresent = this.#alternativePath.get(currentTileCoordinatesToString);
 
       nearbyAgent = this.#searchNearbyAgent(path, i);
@@ -440,23 +439,26 @@ export class GoToPlan extends PlanBase {
 
         const newPath = await wasDeviationPresent;
         if (newPath.length != 0) {
-          //Perform a deep copy of the path if it is valid, otherwise the deviation is not valid
+          //Perform a deep copy of the path if it is valid: reset of the index, step and stepCoordinates is also necessary before proceeding
           path = [...newPath];
           i = 1;
           step = path[i];
+          stepCoordinates = new Coordinates(step.x, step.y);
         } else {
+          //In case a path wasn't found, return a blockpoint and let the execute cycle of GoToPlan handle the problem (it will check around perry and wait if no path are available)
           return new BlockPoint(path, step, i, false);
         }
 
       }
 
-      //After taking the deviation, it is no longer needed: clear. Additionally, if the deviation was not take this still means it is no longer necessary
+      //After taking the deviation, it is no longer needed: clear. Additionally, if the deviation was not taken this still means it is no longer necessary
       this.#alternativePath.delete(currentTileCoordinatesToString);
 
-      //Finally, move the agent but check if the tile is without other agents (again, this ensures that the move is possible)
-      const currentTileCoordinates = new Coordinates(path[i].x, path[i].y);
+      //Now it is safe to also reset currentTileCoordinatesToString
+      currentTileCoordinatesToString = stepCoordinates.toString();
 
-      if (this.agent.internalBelief.isTileWithAgent(currentTileCoordinates)) {
+      //Finally, move the agent but check if the tile is without other agents (again, this ensures that the move is possible)
+      if (this.agent.internalBelief.isTileWithAgent(stepCoordinates)) {
         return new BlockPoint(path, step, i, false);
       }
 
@@ -496,7 +498,7 @@ export class GoToPlan extends PlanBase {
         // Agent did not move
         //console.log("FAIL", movedHorizontally, movedVertically, "from", a.coordinates.x, a.coordinates.y, "to", step.x, step.y);
 
-        if (this.agent.internalBelief.tileMap.getYellowTile(coordinates)) {
+        if (this.agent.internalBelief.tileMap.getYellowTile(stepCoordinates)) {
           //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
           return new BlockPoint(path, step, i, true);
         }
@@ -859,14 +861,16 @@ export class DeviateAndPickUpPlan extends PlanBase {
     const subIntention = new GoPickUpIntention(intention.parcel);
 
     // Compute in advance the path from parcel to target
-    setTimeout(() => {
+    new Promise(res => {
       if (this.#pathFinder) {
-        this.#pathFromParcelToTarget = this.#pathFinder.search(
+        res(this.#pathFinder.search(
           intention.parcelCoordinates,
           intention.targetCoordinates,
-        );
+        ));
+      } else {
+        res(undefined);
       }
-    }, 0);
+    }).then(path => { this.#pathFromParcelToTarget = path; });
 
     const isCompleted = await this.achieveSubIntention(subIntention);
 
