@@ -114,7 +114,7 @@ class Astar {
    * @param {MapPoint} point
    */
   removePoint(point) {
-    this.#ignorePoint(point, false);
+    this.#ignorePoint(point, undefined, false);
   }
 
   /**
@@ -200,19 +200,20 @@ class Astar {
 
     if (pointToIgnore) {
       for (const point of pointToIgnore) {
-        this.#ignorePoint(point, true);
+        this.#ignorePoint(point, pointToIgnore, true);
       }
     }
   }
 
   /**
    * @param {MapPoint} point
+   * @param {MapPoint[] | undefined} pointsToIgnore
    * @param {boolean} resetAfterTimeout
    */
-  #ignorePoint(point, resetAfterTimeout) {
+  #ignorePoint(point, pointsToIgnore, resetAfterTimeout) {
     // Update the neighbors of the point so that they ignore it, namely do not put the point as their neighbor
     for (const neighbor of point.neighbors) {
-      neighbor.updateNeighbors(this.#map, point);
+      neighbor.updateNeighbors(this.#map, pointsToIgnore);
     }
 
     if (resetAfterTimeout) {
@@ -285,8 +286,26 @@ export class MapPoint {
   }
 
   /**
+   * @param {MapPoint} point
+   * @param {MapPoint[] | undefined} pointList 
+   */
+  #isPointInList(point, pointList) {
+    if (pointList == undefined) {
+      return false;
+    }
+
+    for (const p of pointList) {
+      if (point.isEqual(p)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * @param {MapPoint[][]} map
-   * @param {MapPoint | undefined} pointToIgnore
+   * @param {MapPoint[] | undefined} pointToIgnore
    */
   updateNeighbors(map, pointToIgnore = undefined) {
     this.#neighbors = [];
@@ -299,7 +318,7 @@ export class MapPoint {
     // Above
     if (
       j < map[0].length - 1 && // A tile above exists
-      !map[i][j + 1].isEqual(pointToIgnore) && // The tile above does not have to be ignored
+      !this.#isPointInList(map[i][j + 1], pointToIgnore) && // The tile above does not have to be ignored
       map[i][j + 1].w != "0" && // The tile above is walkable
       map[i][j + 1].w != "↓" && // The tile above allows to move up
       this.#w != "↓" // This tile allows to move up
@@ -310,7 +329,7 @@ export class MapPoint {
     // Below
     if (
       j > 0 && // A tile below exists
-      !map[i][j - 1].isEqual(pointToIgnore) && // The tile below does not have to be ignored
+      !this.#isPointInList(map[i][j - 1], pointToIgnore) && // The tile below does not have to be ignored
       map[i][j - 1].w != "0" && // The tile below si walkable
       map[i][j - 1].w != "↑" && // The tile below allows to move down
       this.#w != "↑" // This tile allows to move down
@@ -321,7 +340,7 @@ export class MapPoint {
     // Right
     if (
       i < map.length - 1 && // A tile on the right exists
-      !map[i + 1][j].isEqual(pointToIgnore) && // The tile on the right does not have to be ignored
+      !this.#isPointInList(map[i + 1][j], pointToIgnore) && // The tile on the right does not have to be ignored
       map[i + 1][j].w != "0" && // The tile on the right is walkable
       map[i + 1][j].w != "←" && // The tile on the right allows to move right
       this.#w != "←" // This tile allows to move right
@@ -332,7 +351,7 @@ export class MapPoint {
     // Left
     if (
       i > 0 && // A tile on the left exists
-      !map[i - 1][j].isEqual(pointToIgnore) && // The tile on the left does not have to be ignored
+      !this.#isPointInList(map[i - 1][j], pointToIgnore) && // The tile on the left does not have to be ignored
       map[i - 1][j].w != "0" && // The tile on the left is walkable
       map[i - 1][j].w != "→" && // The tile on the left allows to move left
       this.#w != "→" // This tile allows to move left

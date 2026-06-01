@@ -233,11 +233,9 @@ export class Agent {
 
     // If a GoToIntention was stopped, pop it (no need to be maintained in the queue)
     if (this.#currentIntention && GoToIntention.isTypeOf(this.#currentIntention)) {
-      console.log("pop ", this.#currentIntention);
       this.#intentionPlanQueue.pop();
     }
 
-    console.log("push ", intention, this.#intentionPlanQueue);
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
 
     await this.#achieveCurrentIntention();
