@@ -169,8 +169,8 @@ class PlanBase {
 export class GoToPlan extends PlanBase {
   #pathFinder;
   #MAX_MOVE_ATTEMPTS = 5;
-  #TILES_TO_CHECK_FOR_AGENTS = 4;
-  #TILES_TO_IGNORE_FOR_AGENTS = 2;
+  #TILES_TO_CHECK_FOR_AGENTS;
+  #TILES_TO_IGNORE_FOR_AGENTS;
   #moveAttemptCount;
   /**
   * Map of alternative path. Id is `${tile.x}, ${tile.y}`. Value is the path or a Promise for the path.
@@ -189,6 +189,9 @@ export class GoToPlan extends PlanBase {
       : new PathFinder(this.agent.internalBelief.tileMap.tiles);
     this.#moveAttemptCount = 0;
     this.#alternativePath = new Map();
+
+    this.#TILES_TO_CHECK_FOR_AGENTS = agent.internalBelief.numberOfCheckedTilesForAgentPresence;
+    this.#TILES_TO_IGNORE_FOR_AGENTS = agent.internalBelief.numberOfIgnoredTilesForAgentPresence;
   }
 
   /**
@@ -206,10 +209,14 @@ export class GoToPlan extends PlanBase {
     this.isStopped = false;
 
     const end = intention.destinationCoordinates;
+    const goToInteractionData = this.agent.internalBelief.goToInteractionData;
     let blockPoint;
     let path = intention.path
       ? intention.path // Use the path pre-computed by the intention, if available ...
       : this.#pathFinder.search(this.agent.internalBelief.me.coordinates, end); // ... otherwise search a path
+
+    //Increment GoToData
+    goToInteractionData.incrementNumberOfStartedGoTo();
 
     do {
       if (blockPoint) {
@@ -218,6 +225,9 @@ export class GoToPlan extends PlanBase {
           this.isRunning = false;
           return false;
         }
+
+        //Increment the block counter
+        goToInteractionData.incrementBlockCounter();
 
         //Update the path: it could have been modified by a deviation
         path = blockPoint.currentPath;
@@ -412,6 +422,10 @@ export class GoToPlan extends PlanBase {
         this.isRunning = false;
         return;
       }
+
+      //Check whether parameters were changed
+      this.#TILES_TO_CHECK_FOR_AGENTS = this.agent.internalBelief.numberOfCheckedTilesForAgentPresence;
+      this.#TILES_TO_IGNORE_FOR_AGENTS = this.agent.internalBelief.numberOfIgnoredTilesForAgentPresence;
 
       //Recover the supposed next step (in other words, the tile)
       let step = path[i];

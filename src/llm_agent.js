@@ -43,7 +43,7 @@ export class LLMAgent {
       apiKey: this.#apiKey,
     });
 
-    this.#id = ""
+    this.#id = "";
 
     this.#socket.onYou(agent => this.#id = agent.id);
     this.#socket.onMsg((id, name, msg) => this.#onMsg(id, name, msg));
@@ -64,8 +64,8 @@ export class LLMAgent {
 
     this.#INTRO_PROMPT = `
       You are an AI assistant which goal is to fine tune some parameters of our agent in order to increase the performance in game.
-      The game consists of some BDI agents that have to deliver parcels to get points. Pracels spawn randomly on green tiles and the agents
-      have to deliver them on red ones. You will periodically receive these data as input in this exactly order:
+      The game consists of some BDI agents that have to deliver parcels to get points. Parcels randomly spawn on green tiles and the agents
+      have to deliver them to the red ones. You will periodically receive these data as input in this exactly order:
 
       - score of our agent
       - max number of parcel can spawn in map
@@ -103,7 +103,7 @@ export class LLMAgent {
         role: "system",
         content: this.#ACTION_PROMPT
       }
-    ]
+    ];
   }
 
   /**
@@ -120,8 +120,8 @@ export class LLMAgent {
       const parsedAction = await this.#onTaskReceived(msg);
 
       if (parsedAction) {
-        console.log("LLM Agent received the action:")
-        console.log(parsedAction)
+        console.log("LLM Agent received the action:");
+        console.log(parsedAction);
 
         let msg;
         let intention;
@@ -129,7 +129,7 @@ export class LLMAgent {
           case LLMGoToIntention.TYPE:
             const destinationCoordinates = LLMGoToIntention.parseInput(parsedAction.actionInput);
             intention = new LLMGoToIntention(destinationCoordinates);
-            break
+            break;
         }
 
         if (intention) {
@@ -160,8 +160,8 @@ export class LLMAgent {
       case BDIResponseMessage.TYPE:
         // @ts-ignore
         msg = new BDIResponseMessage(message);
-        console.log(`LLM received "${msg.content}" from ${name}`)
-        break
+        console.log(`LLM received "${msg.content}" from ${name}`);
+        break;
     }
   }
 
@@ -179,7 +179,7 @@ export class LLMAgent {
       content: task,
     });
 
-    console.log(this.#messages)
+    console.log(this.#messages);
 
     // Ask the model whether it wants to answer directly or use a tool.
     const assistantDecision = await this.#callModel(this.#messages);
@@ -290,6 +290,6 @@ export class LLMAgent {
     this.#socket.emitSay(
       this.#id,
       msg
-    )
+    );
   }
 }

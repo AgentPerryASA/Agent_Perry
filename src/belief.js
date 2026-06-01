@@ -10,22 +10,36 @@ import { MapPoint, PathFinder } from "./path_finder.js";
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan } from "./plan.js";
 
 export class Me {
+  /**@type {string} */
   #id;
+  /**@type {string} */
   #name;
+  /**@type {number} */
   #score;
-  coordinates;
+  /**@type {number} */
+  #penalty;
+  /**@type {Coordinates} */
+  #coordinates;
+  /**@type {Parcel[]} */
+  #carriedParcelList;
+  /**@type {string} */
+  #mateId;
 
   /**
    * @param {string} id
    * @param {string} name
    * @param {number} score
+   * @param {number} penalty
    * @param {Coordinates} coordinates
    */
-  constructor(id, name, score, coordinates) {
+  constructor(id, name, score, penalty, coordinates) {
     this.#id = id;
     this.#name = name;
     this.#score = score;
-    this.coordinates = coordinates;
+    this.#penalty = penalty;
+    this.#coordinates = coordinates;
+    this.#carriedParcelList = [];
+    this.#mateId = "";
   }
 
   get id() {
@@ -39,6 +53,90 @@ export class Me {
   get score() {
     return this.#score;
   }
+
+  get penalty() {
+    return this.#penalty;
+  }
+
+  get coordinates() {
+    return this.#coordinates;
+  }
+
+  get carriedParcelList() {
+    return this.#carriedParcelList;
+  }
+
+  get mateId() {
+    return this.#mateId;
+  }
+
+  set coordinates(c) {
+    this.#coordinates = c;
+  }
+
+  set mateId(value) {
+    if (!this.#mateId) {
+      this.#mateId = value;
+    }
+  }
+
+  /**
+   * 
+   * @param {IOAgent} agent 
+   */
+  updateMe(agent) {
+    this.#id = agent.id;
+    this.#name = agent.name;
+    this.#score = agent.score;
+    this.#penalty = agent.penalty;
+  }
+
+  /**
+   * @param {IOParcel[]} sensedParcelsList
+   */
+  reviseCarriedParcelList(sensedParcelsList) {
+    // Assume that no parcel is dropped after being picked up, therefore, it is not possible to pickup a previously picked up parcel.
+    // Notice that onSensing is triggered when the agent has a parcel, even if it is not moving
+    const endTime = Date.now() + 0.01 * this.#carriedParcelList.length;
+
+    let sensedParcelsMap = new Map();
+    if (sensedParcelsList.length > 0) {
+      //Filter only parcels carried by the agent itself
+      for (let i = 0; i < sensedParcelsList.length; i += 1) {
+        const p = sensedParcelsList[i];
+        if (p.carriedBy && p.carriedBy == this.#id) {
+          sensedParcelsMap.set(p.id, p);
+        }
+      }
+    }
+
+    for (let i = 0; i < this.#carriedParcelList.length; i += 1) {
+      const currentParcelFromBelief = this.#carriedParcelList[i];
+      const currentParcelFromSensedList = sensedParcelsMap.get(
+        currentParcelFromBelief.parcel.id,
+      );
+      if (currentParcelFromSensedList != undefined) {
+        // If parcel was already present in list, update its information
+        currentParcelFromBelief.parcel = currentParcelFromSensedList;
+        currentParcelFromBelief.lastUpdateTimestamp = endTime;
+        currentParcelFromBelief.cumulatedTime +=
+          (endTime - currentParcelFromBelief.lastUpdateTimestamp) / 1000;
+        sensedParcelsMap.delete(currentParcelFromBelief.parcel.id);
+      } else {
+        // If parcel is not present in the sensed list, this means the agent no longer carries it,
+        // therefore, it needs to be dropped from the list
+        this.#carriedParcelList.splice(i);
+        i -= 1;
+      }
+    }
+
+    // Finally, add the new parcels that were picked up
+    for (const [_, parcel] of sensedParcelsMap) {
+      let newParcel = new Parcel(parcel, Date.now());
+      this.#carriedParcelList.push(newParcel);
+    }
+  }
+
 }
 
 export class WorldMap {
@@ -120,15 +218,78 @@ export class Parcel {
   }
 }
 
+export class GoToInteractionData {
+  /**@type {number}*/
+  #globalBlockCounter;
+
+  /**@type {number}*/
+  #numberOfStartedGoTo;
+
+  constructor() {
+    this.#globalBlockCounter = 0;
+    this.#numberOfStartedGoTo = 0;
+  }
+
+  incrementBlockCounter() {
+    this.#globalBlockCounter += 1;
+  }
+
+  incrementNumberOfStartedGoTo() {
+    this.#numberOfStartedGoTo += 1;
+  }
+
+  getGoToBlockMean() {
+
+    if (this.#numberOfStartedGoTo > 0) {
+      return this.#globalBlockCounter / this.#numberOfStartedGoTo;
+    }
+
+    return 0;
+  }
+
+};
+
+export class LLMUpdatedParameters {
+  /**@type {number}*/
+  #numberOfCheckedTilesForAgentPresence;
+
+  /**@type {number}*/
+  #numberOfIgnoredTilesForAgentPresence;
+
+  /**@type {number}*/
+  #numberOfPossibleDeviations;
+
+  /**
+   * 
+   * @param {number} numberOfCheckedTilesForAgentPresence 
+   * @param {number} numberOfIgnoredTilesForAgentPresence 
+   * @param {number} numberOfPossibleDeviations
+   */
+  constructor(numberOfCheckedTilesForAgentPresence, numberOfIgnoredTilesForAgentPresence, numberOfPossibleDeviations) {
+    this.#numberOfCheckedTilesForAgentPresence = numberOfCheckedTilesForAgentPresence;
+    this.#numberOfIgnoredTilesForAgentPresence = numberOfIgnoredTilesForAgentPresence;
+    this.#numberOfPossibleDeviations = numberOfPossibleDeviations;
+  }
+
+  get numberOfCheckedTilesForAgentPresence() {
+    return this.#numberOfCheckedTilesForAgentPresence;
+  }
+
+  get numberOfIgnoredTilesForAgentPresence() {
+    return this.#numberOfIgnoredTilesForAgentPresence;
+  }
+
+  get numberOfPossibleDeviations() {
+    return this.#numberOfPossibleDeviations;
+  }
+}
+
 export class Beliefs {
   /**@type {PathFinder | undefined}*/
   #pathFinder;
 
   /**@type {Parcel[]} */
   #parcelList;
-
-  /**@type {Parcel[]} */
-  #carriedParcelList;
 
   /**@type {WorldMap} */
   #tileMap;
@@ -141,6 +302,9 @@ export class Beliefs {
 
   /**@type {number} */
   #parcelMaxScore;
+
+  /**@type {number}*/
+  #maxParcelsPresent;
 
   /**@type {number} */
   #gameSpeed;
@@ -169,26 +333,47 @@ export class Beliefs {
   /** @type { TargetTile | undefined } */
   #currentTargetTile;
 
-  /**@type {string} */
-  #mateId;
+  /**
+   * A separate map keep track of all encountered agent. While it could be merged with nearAgentList, keeping them two separate entities allow faster search later
+   * @type {Map<string,IOAgent>}
+  */
+  #encounteredAgentsIdList;
+
+  /**
+   * @type {GoToInteractionData}
+  */
+  #goToInteractionData;
+
+  /**@type {number}*/
+  #numberOfCheckedTilesForAgentPresence;
+
+  /**@type {number}*/
+  #numberOfIgnoredTilesForAgentPresence;
+
+  /**@type {number}*/
+  #numberOfPossibleDeviations;
 
   constructor() {
     this.#parcelList = [];
-    this.#carriedParcelList = [];
     this.#tileMap = new WorldMap([], [], [], []);
     this.#carriedParcelsCount = 0;
     this.#parcelMinScore = 0;
     this.#parcelMaxScore = 0;
+    this.#maxParcelsPresent = 0;
     this.#gameSpeed = 0;
     this.#nearAgentList = [];
     this.#parcelDecayTimerValue = 0;
     this.#deviateAndPickupIntentionCounter = 0;
     this.#pathFinder = undefined;
-    this.#me = new Me("", "", 0, new Coordinates(0, 0));
+    this.#me = new Me("", "", 0, 0, new Coordinates(0, 0));
     this.#tileWithCrateMap = new Map();
     this.#plannerBeliefSet = new Beliefset();
     this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan];
-    this.#mateId = ""
+    this.#encounteredAgentsIdList = new Map();
+    this.#goToInteractionData = new GoToInteractionData();
+    this.#numberOfCheckedTilesForAgentPresence = 4;
+    this.#numberOfIgnoredTilesForAgentPresence = 2;
+    this.#numberOfPossibleDeviations = 5;
   }
 
   get planLibrary() {
@@ -209,10 +394,6 @@ export class Beliefs {
 
   get parcelList() {
     return this.#parcelList;
-  }
-
-  get carriedParcelList() {
-    return this.#carriedParcelList;
   }
 
   get parcelMinScore() {
@@ -239,8 +420,20 @@ export class Beliefs {
     return this.#pathFinder;
   }
 
-  get mateId() {
-    return this.#mateId;
+  get goToInteractionData() {
+    return this.#goToInteractionData;
+  }
+
+  get numberOfCheckedTilesForAgentPresence() {
+    return this.#numberOfCheckedTilesForAgentPresence;
+  }
+
+  get numberOfIgnoredTilesForAgentPresence() {
+    return this.#numberOfIgnoredTilesForAgentPresence;
+  }
+
+  get numberOfPossibleDeviations() {
+    return this.#numberOfPossibleDeviations;
   }
 
   set deviateAndPickupIntentionCounter(value) {
@@ -251,19 +444,8 @@ export class Beliefs {
     this.#carriedParcelsCount = value;
   }
 
-  set mateId(value) {
-    if (!this.#mateId) {
-      this.#mateId = value;
-    }
-  }
-
   set currentTargetTile(tile) {
     this.#currentTargetTile = tile;
-  }
-
-  clearCarriedParcelList() {
-    //Force clearing of carried parcels. In general, this is automatically performed by the revision process though
-    this.#carriedParcelList = [];
   }
 
   /**
@@ -283,10 +465,25 @@ export class Beliefs {
           agent.id,
           agent.name,
           agent.score,
+          agent.penalty,
           new Coordinates(agent.x, agent.y),
         );
+      } else {
+        //For reasons regarding the startup of the agent, the first update must recreate the me information. Otherwise, let me update itself.
+        this.#me.updateMe(agent);
       }
     }
+  }
+
+  /**
+   * @param {LLMUpdatedParameters} parameters 
+   */
+  updateParameters(parameters) {
+    this.#numberOfCheckedTilesForAgentPresence = parameters.numberOfCheckedTilesForAgentPresence;
+
+    this.#numberOfIgnoredTilesForAgentPresence = parameters.numberOfIgnoredTilesForAgentPresence;
+
+    this.#numberOfPossibleDeviations = parameters.numberOfPossibleDeviations;
   }
 
   /**
@@ -370,51 +567,6 @@ export class Beliefs {
     }
   }
 
-  /**
-   * @param {IOParcel[]} sensedParcelsList
-   */
-  reviseCarriedParcelList(sensedParcelsList) {
-    // Assume that no parcel is dropped after being picked up, therefore, it is not possible to pickup a previously picked up parcel.
-    // Notice that onSensing is triggered when the agent has a parcel, even if it is not moving
-    const endTime = Date.now() + 0.01 * this.#carriedParcelList.length;
-
-    let sensedParcelsMap = new Map();
-    if (sensedParcelsList.length > 0) {
-      //Filter only parcels carried by the agent itself
-      for (let i = 0; i < sensedParcelsList.length; i += 1) {
-        const p = sensedParcelsList[i];
-        if (p.carriedBy && p.carriedBy == this.#me.id) {
-          sensedParcelsMap.set(p.id, p);
-        }
-      }
-    }
-
-    for (let i = 0; i < this.#carriedParcelList.length; i += 1) {
-      const currentParcelFromBelief = this.#carriedParcelList[i];
-      const currentParcelFromSensedList = sensedParcelsMap.get(
-        currentParcelFromBelief.parcel.id,
-      );
-      if (currentParcelFromSensedList != undefined) {
-        // If parcel was already present in list, update its information
-        currentParcelFromBelief.parcel = currentParcelFromSensedList;
-        currentParcelFromBelief.lastUpdateTimestamp = endTime;
-        currentParcelFromBelief.cumulatedTime +=
-          (endTime - currentParcelFromBelief.lastUpdateTimestamp) / 1000;
-        sensedParcelsMap.delete(currentParcelFromBelief.parcel.id);
-      } else {
-        // If parcel is not present in the sensed list, this means the agent no longer carries it,
-        // therefore, it needs to be dropped from the list
-        this.#carriedParcelList.splice(i);
-        i -= 1;
-      }
-    }
-
-    // Finally, add the new parcels that were picked up
-    for (const [_, parcel] of sensedParcelsMap) {
-      let newParcel = new Parcel(parcel, Date.now());
-      this.#carriedParcelList.push(newParcel);
-    }
-  }
 
   /**
    * @param {IOTile[]} tiles
@@ -559,6 +711,8 @@ export class Beliefs {
     );
 
     this.#gameSpeed = config.GAME.player.movement_duration;
+
+    this.#maxParcelsPresent = config.GAME.parcels.max;
   }
 
   /**@param {IOAgent[]} agents*/
@@ -567,30 +721,18 @@ export class Beliefs {
     this.#nearAgentList.splice(0, this.#nearAgentList.length);
 
     //Copy needed: sometimes coordinates have decimal points
-    for (let i = 0; i < agents.length; i += 1) {
-      const agent = agents[i];
+    for (const agent of agents) {
+
+      //Set the global encountered agents map
+      this.#encounteredAgentsIdList.set(agent.id, agent);
+
+      //Update nearby agents list
       if (agent.x && agent.y) {
         agent.x = Math.ceil(agent.x);
         agent.y = Math.ceil(agent.y);
       }
       this.#nearAgentList.push(agent);
     }
-  }
-
-  getMinValuableParcel() {
-    // TODO: unused, remove
-    let minParcelReward = Number.MAX_VALUE;
-    let minParcel = undefined;
-
-    for (let i = 0; i < this.#carriedParcelList.length; i += 1) {
-      const p = this.#carriedParcelList[i];
-      if (p.parcel.reward < minParcelReward) {
-        minParcelReward = p.parcel.reward;
-        minParcel = p.parcel;
-      }
-    }
-
-    return minParcel;
   }
 
   /**
@@ -668,6 +810,25 @@ export class Beliefs {
 
     return plannerBeliefs;
   }
+
+  getBeliefsForLLM() {
+    const beliefs = `
+    Our agent is in the following situation:
+      - Score: ${this.me.score}
+      - Penalty: ${this.me.penalty}
+      - Decay: ${this.parcelDecayTimerValue}
+      - Maximum number of parcels that can be simultaneously present: ${this.#maxParcelsPresent}
+      - Maximum parcel value: ${this.#parcelMaxScore}
+      - Number of agents: ${this.getNumberOfEncounteredAgents()}
+      - Mean of blocks during movements: ${this.goToInteractionData.getGoToBlockMean()}
+    `;
+    return beliefs;
+  }
+
+  getNumberOfEncounteredAgents() {
+    return this.#encounteredAgentsIdList.size;
+  }
+
 }
 
 export class TargetTile {

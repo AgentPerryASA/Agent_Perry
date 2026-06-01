@@ -96,7 +96,7 @@ export class BDIAgent {
       // Keep track of parcels around us
       this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels);
-        this.#internalBelief.reviseCarriedParcelList(sensing.parcels);
+        this.#internalBelief.me.reviseCarriedParcelList(sensing.parcels);
         this.#internalBelief.updateNearAgentList(sensing.agents);
         this.#internalBelief.updateTileWithCrate(sensing.crates);
       });
@@ -126,21 +126,32 @@ export class BDIAgent {
   async #onMsg(id, name, message) {
     let msg;
 
-    // @ts-ignore
+    if (!("type" in message)) {
+      return;
+    }
+
     switch (message.type) {
       case HandshakeMessage.TYPE:
         // @ts-ignore
         msg = new HandshakeMessage(message);
         if (msg.key == process.env.HANDSHAKE_KEY) {
-          this.#internalBelief.mateId = id;
+          this.#internalBelief.me.mateId = id;
           // console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`)
         }
         break;
       case LLMIntentionMessage.TYPE:
         // TODO: No way to know if it is sent by LLM or other agent, #llmIntention is null
 
+        //Verify integrity of the message
+        if (!("intention" in message) || !message.intention || !(typeof message.intention === "object") || !("type" in message.intention) || !("destinationCoordinates" in message.intention)) {
+          return;
+        }
+
+        //Safe casting given the checked type with the switch
+        const destinationCoordinates = /** @type {Coordinates} */(message.intention.destinationCoordinates);
+
         if (message.intention.type == LLMGoToIntention.TYPE) {
-          this.#llmIntention = new LLMGoToIntention(message.intention.destinationCoordinates);
+          this.#llmIntention = new LLMGoToIntention(destinationCoordinates);
           msg = new LLMIntentionMessage({ intention: this.#llmIntention });
         }
 
@@ -157,8 +168,11 @@ export class BDIAgent {
       case LLMIntentionTakenChargeMessage.TYPE:
         console.log(`${this.#internalBelief.me.name} OK`);
         // The other agent has taken charge the LLM intention
-        // @ts-ignore
-        msg = new LLMIntentionTakenChargeMessage(message);
+
+        //Safe casting given the checked type with the switch
+        const castedMessage = /**@type {LLMIntention}*/(message);
+
+        msg = new LLMIntentionTakenChargeMessage({ intention: castedMessage });
         // TODO: ok, I know what the other agent is doing
         break;
       default:
@@ -188,7 +202,7 @@ export class BDIAgent {
    */
   #sendToMate(message) {
     this.#socket.emitSay(
-      this.#internalBelief.mateId,
+      this.#internalBelief.me.mateId,
       message
     );
   }
@@ -229,9 +243,12 @@ export class BDIAgent {
   }
 
   #selectBestIntention() {
+
+    const NUMBER_OF_POSSIBLE_DEVIATIONS = this.internalBelief.numberOfPossibleDeviations;
     const goPutDownIntention = this.#getFirstInstanceOfTypeInQueue(GoPutDownIntention);
     // Check if any deviation is possible only if our main intention is to delivery
-    if (goPutDownIntention && this.#internalBelief.deviateAndPickupIntentionCounter < 5) {
+    if (goPutDownIntention && this.#internalBelief.deviateAndPickupIntentionCounter < NUMBER_OF_POSSIBLE_DEVIATIONS) {
+
       const gameSpeed = this.#internalBelief.gameSpeed;
       const parcelDecayTime = this.#internalBelief.parcelDecayTimerValue * 1000;
 
