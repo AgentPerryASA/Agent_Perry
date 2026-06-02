@@ -1,9 +1,9 @@
 /** @typedef LLMIntention @type {LLMGoToIntention} */
 
-import { Coordinates } from "./coordinates.js";
+import { Coordinates } from "./utils/coordinates.js";
 
 export class LLMGoToIntention {
-  static #TYPE = "goTo"
+  static #TYPE = "goTo";
 
   type;
   destinationCoordinates;

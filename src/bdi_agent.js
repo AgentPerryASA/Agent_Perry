@@ -1,18 +1,20 @@
 /** @typedef IOParcel @type { import("@unitn-asa/deliveroo-js-sdk/server").IOParcel } */
 /** @typedef Plan @type { import('./plan.js').Plan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
-/** @typedef Message @type { import("./message.js").Message } */
+/** @typedef Message @type { import("./utils/message.js").Message } */
 /** @typedef LLMIntention @type {import("./llm_intention.js").LLMIntention} */
 
 
 import 'dotenv/config';
-import { Coordinates } from "./coordinates.js";
+import { Coordinates } from "./utils/coordinates.js";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
-import { Beliefs, TargetTile } from "./belief.js";
+import { Beliefs } from "./belief.js";
 import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
-import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage } from './message.js';
+import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage } from './utils/message.js';
 import { LLMGoToIntention } from './llm_intention.js';
+import { LLMUpdatedParameters } from './utils/beliefs_utils.js';
+import { TargetTile } from './utils/path_utils.js';
 
 export class BDIAgent {
   #socket;
@@ -115,9 +117,9 @@ export class BDIAgent {
         }
 
         this.#wasRequestForTuningSent = true;
-        console.log("sending");
+
         await this.#requestParametersTuningToLLM();
-        //TODO set this.#wasRequestForTuningSent to false when an answer is received
+
       }, 5000);
     });
   }
@@ -207,6 +209,18 @@ export class BDIAgent {
 
         const messageId = /**@type {string} */(message.llmAgentId);
         this.#internalBelief.me.llmId = messageId;
+
+        break;
+      case LLMParametersTuningResponseMessage.TYPE:
+        if (!("updatedParameters" in message)) {
+          return;
+        }
+
+        const updatedParameters = /**@type {LLMUpdatedParameters}*/(message.updatedParameters);
+
+        this.internalBelief.updateParameters(updatedParameters);
+
+        this.#wasRequestForTuningSent = false;
 
         break;
       default:

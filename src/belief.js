@@ -5,321 +5,13 @@
 /**@typedef IOCrate @type {import("@unitn-asa/deliveroo-js-sdk/types/IOSensing.js").IOCrate}*/
 
 import { Beliefset } from "@unitn-asa/pddl-client";
-import { Coordinates } from "./coordinates.js";
-import { MapPoint, PathFinder } from "./path_finder.js";
+
+import { PathFinder } from "./path_finder.js";
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan } from "./plan.js";
-
-export class Me {
-  /**@type {string} */
-  #id;
-  /**@type {string} */
-  #name;
-  /**@type {number} */
-  #score;
-  /**@type {number} */
-  #penalty;
-  /**@type {Coordinates} */
-  #coordinates;
-  /**@type {Parcel[]} */
-  #carriedParcelList;
-  /**@type {string} */
-  #mateId;
-  /**@type {string}*/
-  #llmId;
-
-  /**
-   * @param {string} id
-   * @param {string} name
-   * @param {number} score
-   * @param {number} penalty
-   * @param {Coordinates} coordinates
-   */
-  constructor(id, name, score, penalty, coordinates) {
-    this.#id = id;
-    this.#name = name;
-    this.#score = score;
-    this.#penalty = penalty;
-    this.#coordinates = coordinates;
-    this.#carriedParcelList = [];
-    this.#mateId = "";
-    this.#llmId = "";
-  }
-
-  get id() {
-    return this.#id;
-  }
-
-  get name() {
-    return this.#name;
-  }
-
-  get score() {
-    return this.#score;
-  }
-
-  get penalty() {
-    return this.#penalty;
-  }
-
-  get coordinates() {
-    return this.#coordinates;
-  }
-
-  get carriedParcelList() {
-    return this.#carriedParcelList;
-  }
-
-  get mateId() {
-    return this.#mateId;
-  }
-
-  get llmId() {
-    return this.#llmId;
-  }
-
-  set coordinates(c) {
-    this.#coordinates = c;
-  }
-
-  set mateId(value) {
-    if (!this.#mateId) {
-      this.#mateId = value;
-    }
-  }
-
-  set llmId(value) {
-    this.#llmId = value;
-  }
-
-  /**
-   * 
-   * @param {IOAgent} agent 
-   */
-  updateMe(agent) {
-    this.#id = agent.id;
-    this.#name = agent.name;
-    this.#score = agent.score;
-    this.#penalty = agent.penalty;
-  }
-
-  /**
-   * @param {IOParcel[]} sensedParcelsList
-   */
-  reviseCarriedParcelList(sensedParcelsList) {
-    // Assume that no parcel is dropped after being picked up, therefore, it is not possible to pickup a previously picked up parcel.
-    // Notice that onSensing is triggered when the agent has a parcel, even if it is not moving
-    const endTime = Date.now() + 0.01 * this.#carriedParcelList.length;
-
-    let sensedParcelsMap = new Map();
-    if (sensedParcelsList.length > 0) {
-      //Filter only parcels carried by the agent itself
-      for (let i = 0; i < sensedParcelsList.length; i += 1) {
-        const p = sensedParcelsList[i];
-        if (p.carriedBy && p.carriedBy == this.#id) {
-          sensedParcelsMap.set(p.id, p);
-        }
-      }
-    }
-
-    for (let i = 0; i < this.#carriedParcelList.length; i += 1) {
-      const currentParcelFromBelief = this.#carriedParcelList[i];
-      const currentParcelFromSensedList = sensedParcelsMap.get(
-        currentParcelFromBelief.parcel.id,
-      );
-      if (currentParcelFromSensedList != undefined) {
-        // If parcel was already present in list, update its information
-        currentParcelFromBelief.parcel = currentParcelFromSensedList;
-        currentParcelFromBelief.lastUpdateTimestamp = endTime;
-        currentParcelFromBelief.cumulatedTime +=
-          (endTime - currentParcelFromBelief.lastUpdateTimestamp) / 1000;
-        sensedParcelsMap.delete(currentParcelFromBelief.parcel.id);
-      } else {
-        // If parcel is not present in the sensed list, this means the agent no longer carries it,
-        // therefore, it needs to be dropped from the list
-        this.#carriedParcelList.splice(i);
-        i -= 1;
-      }
-    }
-
-    // Finally, add the new parcels that were picked up
-    for (const [_, parcel] of sensedParcelsMap) {
-      let newParcel = new Parcel(parcel, Date.now());
-      this.#carriedParcelList.push(newParcel);
-    }
-  }
-
-}
-
-export class WorldMap {
-  /** @type { string[][] } */
-  tiles;
-  /** @type { TargetTile[] } */
-  greenTiles;
-  /** @type { TargetTile[] } */
-  redTiles;
-  /** @type {IOTile[]} */
-  yellowTiles;
-
-  /**
-   * @param {string[][]} tiles
-   * @param {TargetTile[]} greenTiles
-   * @param {TargetTile[]} redTiles
-   * @param {IOTile[]} yellowTiles
-   */
-  constructor(tiles, greenTiles, redTiles, yellowTiles) {
-    this.tiles = tiles;
-    this.greenTiles = greenTiles;
-    this.redTiles = redTiles;
-    this.yellowTiles = yellowTiles;
-  }
-
-  /**
-   * @param {TargetTile} targetTile
-   */
-  getGreenTile(targetTile) {
-    for (const green of this.greenTiles) {
-      if (green.isEqual(targetTile)) {
-        return green;
-      }
-    }
-  }
-
-  /**
-   * @param {TargetTile} targetTile
-   */
-  getRedTile(targetTile) {
-    for (const red of this.redTiles) {
-      if (red.isEqual(targetTile)) {
-        return red;
-      }
-    }
-  }
-
-  /**
-   * @param {Coordinates} coordinates
-   */
-  getYellowTile(coordinates) {
-    for (const yellow of this.yellowTiles) {
-      if (yellow.x == coordinates.x && yellow.y == coordinates.y) {
-        return yellow;
-      }
-    }
-    return undefined;
-  }
-}
-
-export class Parcel {
-  /**@type {number} */
-  lastUpdateTimestamp;
-
-  /**@type {number} */
-  cumulatedTime;
-
-  /**@type {IOParcel} */
-  parcel;
-
-  /**
-   * @param {IOParcel} parcel
-   * @param {number} lastUpdateTimestamp
-   */
-  constructor(parcel, lastUpdateTimestamp) {
-    this.parcel = parcel;
-    this.cumulatedTime = 0;
-    this.lastUpdateTimestamp = lastUpdateTimestamp;
-  }
-}
-
-export class GoToInteractionData {
-  /**@type {number}*/
-  #globalBlockCounter;
-
-  /**@type {number}*/
-  #numberOfStartedGoTo;
-
-  constructor() {
-    this.#globalBlockCounter = 0;
-    this.#numberOfStartedGoTo = 0;
-  }
-
-  incrementBlockCounter() {
-    this.#globalBlockCounter += 1;
-  }
-
-  incrementNumberOfStartedGoTo() {
-    this.#numberOfStartedGoTo += 1;
-  }
-
-  getGoToBlockMean() {
-
-    if (this.#numberOfStartedGoTo > 0) {
-      return this.#globalBlockCounter / this.#numberOfStartedGoTo;
-    }
-
-    return 0;
-  }
-
-};
-
-export class LLMUpdatedParameters {
-  /**@type {number}*/
-  #numberOfPossibleDeviations;
-
-  /**@type {number}*/
-  #numberOfCheckedTilesForAgentPresence;
-
-  /**@type {number}*/
-  #numberOfIgnoredTilesForAgentPresence;
-
-  /**@type {number} */
-  #movementDelay;
-
-  /**@type {string}*/
-  #randomFunction;
-
-  /**@type {number}*/
-  #minScoreMultiplier;
-
-  /**
-   * @param {number} numberOfPossibleDeviations
-   * @param {number} numberOfCheckedTilesForAgentPresence 
-   * @param {number} numberOfIgnoredTilesForAgentPresence 
-   * @param {number} movementDelay 
-   * @param {string} randomFunction 
-   * @param {number} minScoreMultiplier 
-   */
-  constructor(numberOfPossibleDeviations, numberOfCheckedTilesForAgentPresence, numberOfIgnoredTilesForAgentPresence, movementDelay, randomFunction, minScoreMultiplier) {
-    this.#numberOfPossibleDeviations = numberOfPossibleDeviations;
-    this.#numberOfCheckedTilesForAgentPresence = numberOfCheckedTilesForAgentPresence;
-    this.#numberOfIgnoredTilesForAgentPresence = numberOfIgnoredTilesForAgentPresence;
-    this.#movementDelay = movementDelay;
-    this.#randomFunction = randomFunction;
-    this.#minScoreMultiplier = minScoreMultiplier;
-  }
-
-  get numberOfPossibleDeviations() {
-    return this.#numberOfPossibleDeviations;
-  }
-
-  get numberOfCheckedTilesForAgentPresence() {
-    return this.#numberOfCheckedTilesForAgentPresence;
-  }
-
-  get numberOfIgnoredTilesForAgentPresence() {
-    return this.#numberOfIgnoredTilesForAgentPresence;
-  }
-
-  get movementDelay() {
-    return this.#movementDelay;
-  }
-
-  get randomFunction() {
-    return this.#randomFunction;
-  }
-
-  get minScoreMultiplier() {
-    return this.#minScoreMultiplier;
-  }
-}
+import { GoToInteractionData, LLMUpdatedParameters, Parcel, WorldMap } from "./utils/beliefs_utils.js";
+import { TargetTile } from "./utils/path_utils.js";
+import { Me } from "./me.js";
+import { Coordinates } from "./utils/coordinates.js";
 
 export class Beliefs {
   /**@type {PathFinder | undefined}*/
@@ -390,6 +82,9 @@ export class Beliefs {
   /**@type {number}*/
   #numberOfPossibleDeviations;
 
+  /**@type {number}*/
+  #parcelMinScoreMultiplier;
+
   constructor() {
     this.#parcelList = [];
     this.#tileMap = new WorldMap([], [], [], []);
@@ -411,6 +106,7 @@ export class Beliefs {
     this.#numberOfCheckedTilesForAgentPresence = 4;
     this.#numberOfIgnoredTilesForAgentPresence = 2;
     this.#numberOfPossibleDeviations = 5;
+    this.#parcelMinScoreMultiplier = 0.4;
   }
 
   get planLibrary() {
@@ -516,11 +212,18 @@ export class Beliefs {
    * @param {LLMUpdatedParameters} parameters 
    */
   updateParameters(parameters) {
+    this.#numberOfPossibleDeviations = parameters.numberOfPossibleDeviations;
+
     this.#numberOfCheckedTilesForAgentPresence = parameters.numberOfCheckedTilesForAgentPresence;
 
     this.#numberOfIgnoredTilesForAgentPresence = parameters.numberOfIgnoredTilesForAgentPresence;
 
-    this.#numberOfPossibleDeviations = parameters.numberOfPossibleDeviations;
+    this.#me.agentMovementDelay = parameters.movementDelay;
+
+    //TODO random function
+
+    this.#parcelMinScoreMultiplier = parameters.minScoreMultiplier;
+
   }
 
   /**
@@ -741,7 +444,7 @@ export class Beliefs {
   /**@param {IOConfig} config*/
   updateGameConfiguration(config) {
     const avgScore = config.GAME.parcels.reward_avg;
-    this.#parcelMinScore = avgScore * 0.4;
+    this.#parcelMinScore = avgScore * this.#parcelMinScoreMultiplier;
 
     this.#parcelDecayTimerValue = Number(
       config.GAME.parcels.decaying_event.toString().split("s")[0],
@@ -850,12 +553,20 @@ export class Beliefs {
 
   getBeliefsForLLM() {
     const beliefs = `
-    Our agent is in the following situation:
-      - score of our agent: ${this.me.score}
-      - max number of parcel can spawn in map: ${this.#maxParcelsPresent}
-      - max score per parcel: ${this.#parcelMaxScore}
+    input:
+      - score: ${this.me.score}
+      - max number of parcels: ${this.#maxParcelsPresent}
+      - max value of parcels: ${this.#parcelMaxScore}
       - number of agents: ${this.getNumberOfEncounteredAgents()}
       - mean of attempts to follow a path: ${this.goToInteractionData.getGoToBlockMean()}
+      - random function: cosine
+
+      current parameters:
+      - number of possible deviations: ${this.#numberOfPossibleDeviations}
+      - number of ignored tiles after obstacle: ${this.#numberOfIgnoredTilesForAgentPresence}
+      - delay per movement: ${this.#me.agentMovementDelay}ms
+      - random function: cosine
+      - multiplier for parcelMinScore: ${this.#parcelMinScoreMultiplier}
     `.trim();
 
     return beliefs;
@@ -865,94 +576,4 @@ export class Beliefs {
     return this.#encounteredAgentsIdList.size;
   }
 
-}
-
-export class TargetTile {
-  #coordinates;
-  /** @type {Map<Coordinates, WeightedPath>} */
-  #pathList;
-  #totalPathsLength;
-
-  /**
-   * @param {Coordinates} coordinates
-   */
-  constructor(coordinates) {
-    this.#coordinates = coordinates;
-    this.#pathList = new Map();
-    this.#totalPathsLength = 0;
-  }
-
-  get coordinates() {
-    return this.#coordinates;
-  }
-
-  get pathList() {
-    return this.#pathList;
-  }
-
-  /**
-   * @param {Coordinates} destinationTile
-   * @param {MapPoint[]} path
-   */
-  addPath(destinationTile, path) {
-    this.#totalPathsLength += path.length;
-    this.#pathList.set(destinationTile, new WeightedPath(0, path));
-  }
-
-  updatePathsWeights() {
-    for (const weightedPath of this.#pathList.values()) {
-      // If there is only one path available ...
-      if (this.#pathList.size == 1) {
-        // ... the chance to select it is 100% ...
-        weightedPath.weight = 1;
-        return;
-      }
-
-      // ... otherwise normalize each path length and compute the probability
-      const ratio = weightedPath.path.length / this.#totalPathsLength;
-      // cos(x * 1.5) returns a value in (~0.07, 1], the long the path, the lower the probability
-      // NOTE: cos(x * 1.5) is slightly greater than y = -x + 1, try hyperbola instead
-      //       (like y = 0.1 / (x + 0.1)) for a more drastic drop as distance increases
-      weightedPath.weight = Math.cos(ratio * 1.5);
-    }
-  }
-
-  /**
-   * @param {TargetTile} targetTile
-   */
-  isEqual(targetTile) {
-    return this.#coordinates.isEqual(targetTile.coordinates);
-  }
-}
-
-class WeightedPath {
-  #weight;
-  #path;
-
-  /**
-   * @param {number} weight
-   * @param {MapPoint[]} path
-   */
-  constructor(weight, path) {
-    this.#weight = weight;
-    this.#path = path;
-  }
-
-  get weight() {
-    return this.#weight;
-  }
-
-  get path() {
-    return this.#path;
-  }
-
-  set weight(value) {
-    if (value < 0) {
-      value = 0;
-    } else if (value > 1) {
-      value = 1;
-    }
-
-    this.#weight = value;
-  }
 }

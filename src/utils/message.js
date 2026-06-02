@@ -1,5 +1,7 @@
-/** @typedef Message @type { HandshakeMessage | LLMIntentionMessage | LLMIntentionTakenChargeMessage | BDIResponseMessage | LLMSetIdMessage} */
-/** @typedef LLMIntention @type {import("./llm_intention.js").LLMIntention} */
+/** @typedef Message @type { HandshakeMessage | LLMIntentionMessage | LLMIntentionTakenChargeMessage | BDIResponseMessage | LLMSetIdMessage | LLMParametersTuningResponseMessage} */
+/** @typedef LLMIntention @type {import("../llm_intention.js").LLMIntention} */
+
+import { LLMUpdatedParameters } from "./beliefs_utils.js";
 
 export class HandshakeMessage {
   static #TYPE = "handshake";
@@ -94,6 +96,25 @@ export class LLMParametersTuningRequestMessage {
 
   static get TYPE() {
     return LLMParametersTuningRequestMessage.#TYPE;
+  }
+}
+
+export class LLMParametersTuningResponseMessage {
+  static #TYPE = "llmparameterstuningresponse";
+
+  updatedParameters;
+  type;
+
+  /**
+  * @param {{updatedParameters: LLMUpdatedParameters }} updatedParameters
+  */
+  constructor({ updatedParameters }) {
+    this.type = LLMParametersTuningResponseMessage.#TYPE;
+    this.updatedParameters = updatedParameters;
+  }
+
+  static get TYPE() {
+    return LLMParametersTuningResponseMessage.#TYPE;
   }
 }
 

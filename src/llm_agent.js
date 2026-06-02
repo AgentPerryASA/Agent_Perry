@@ -1,11 +1,11 @@
-/** @typedef Message @type { import("./message.js").Message } */
+/** @typedef Message @type { import("./utils/message.js").Message } */
 
 import "dotenv/config";
 import OpenAI from "openai";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk";
-import { LLMIntentionMessage, BDIResponseMessage, HandshakeMessage, LLMParametersTuningRequestMessage, LLMSetIdMessage } from "./message.js";
+import { LLMIntentionMessage, BDIResponseMessage, HandshakeMessage, LLMParametersTuningRequestMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage } from "./utils/message.js";
 import { LLMGoToIntention } from "./llm_intention.js";
-import { LLMUpdatedParameters } from "./belief.js";
+import { LLMUpdatedParameters } from "./utils/beliefs_utils.js";
 
 export class LLMAgent {
   #socket;
@@ -136,7 +136,7 @@ export class LLMAgent {
    */
   async #onMsg(id, name, message) {
 
-    if (name == "Admin" || name == "admin") {
+    /*if (name == "Admin" || name == "admin") {
       // NOTE: Server sends simple strings
       const msg = String(message);
 
@@ -163,9 +163,9 @@ export class LLMAgent {
       }
 
       return;
-    }
+    }*/
 
-    // Accept only messages from the associated BDI agent
+    // Accept only messages from the associated BDI agent and its mate
     // TODO: ignore every Message even if they come from the BDI agent but some special responses
     if ((typeof message === "string") || !("type" in message) || ((id != this.#id || id != this.#mateId) && !this.#whitelist.includes(/**@type {string}*/(message.type)))) {
       //Reject if message was written in chat (not useful at this point) or the message if from the other peer and it is not whitelisted
@@ -205,41 +205,21 @@ export class LLMAgent {
         }
 
         msg = new LLMParametersTuningRequestMessage({ currentParameters: /**@type {string}*/(message.currentParameters) });
-        try {
-          const response = await this.#onParametersTuningRequestReceived(msg.currentParameters);
-          console.log(response); //TODO make response
-        } catch {
-          console.error("ANSWER FAILURE");
+
+        const parameters = await this.#onTaskReceived(msg.currentParameters);
+
+        if (!(parameters instanceof LLMUpdatedParameters)) {
+          return;
         }
+
+        const responseMsg = new LLMParametersTuningResponseMessage({ updatedParameters: parameters });
+
+        this.#sendToAgent(responseMsg, id);
+
         break;
       default:
         break;
     }
-  }
-
-  /**
-   * @param {string} currentParameters 
-  */
-  async #onParametersTuningRequestReceived(currentParameters) {
-
-    // Add the server task to memory
-    this.#messages.push({
-      role: "user",
-      content: currentParameters,
-    });
-
-    // Ask the model whether it wants to answer directly or use a tool.
-    const assistantDecision = await this.#callModel(this.#messages);
-    console.log(`Assistant decision:\n${assistantDecision}\n`);
-
-    // Store the result in a variable called assistantDecision and save it in the messages array.
-    this.#messages.push({
-      role: "assistant",
-      content: assistantDecision,
-    });
-
-    const res = this.#extractValues(assistantDecision);
-    return res;
   }
 
   /**
@@ -368,7 +348,7 @@ export class LLMAgent {
 
     return new LLMUpdatedParameters(
       numDeviation,
-      0,
+      4,
       blocksAfterAgent,
       movementDelay,
       randomFunction,

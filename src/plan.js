@@ -2,7 +2,7 @@
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
 import { BDIAgent } from "./bdi_agent.js";
-import { Coordinates } from "./coordinates.js";
+import { Coordinates } from "./utils/coordinates.js";
 import {
   GoPickUpIntention,
   GoToIntention,
@@ -11,7 +11,8 @@ import {
   DeviateUsingPlannerIntention,
   DeviateUsingAStarIntention,
 } from "./intention.js";
-import { PathFinder, MapPoint } from "./path_finder.js";
+import { PathFinder } from "./path_finder.js";
+import { MapPoint } from "./utils/path_utils.js";
 
 class NearbyAgent {
   /**@type {Boolean}*/
@@ -312,7 +313,6 @@ export class GoToPlan extends PlanBase {
             if (subPlan.path && subPlan.path.length > 0) {
               path = [...subPlan.path];
             } else {
-              //console.log("No path found, waiting for map unlocking and re-trying");
               await new Promise(res => setTimeout(res, 1000));
               continue;
             }
@@ -528,7 +528,7 @@ export class GoToPlan extends PlanBase {
         // Agent moved
         this.#moveAttemptCount = 0;
         i++;
-        //await new Promise((res) => setTimeout(res, 50));
+        await new Promise((res) => setTimeout(res, this.agent.internalBelief.me.agentMovementDelay));
       }
 
 
