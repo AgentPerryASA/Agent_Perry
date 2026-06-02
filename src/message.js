@@ -1,4 +1,4 @@
-/** @typedef Message @type { HandshakeMessage | LLMIntentionMessage | LLMIntentionTakenChargeMessage | BDIResponseMessage } */
+/** @typedef Message @type { HandshakeMessage | LLMIntentionMessage | LLMIntentionTakenChargeMessage | BDIResponseMessage | LLMSetIdMessage} */
 /** @typedef LLMIntention @type {import("./llm_intention.js").LLMIntention} */
 
 export class HandshakeMessage {
@@ -21,7 +21,7 @@ export class HandshakeMessage {
 }
 
 export class LLMIntentionMessage {
-  static #TYPE = "llmintention"
+  static #TYPE = "llmintention";
 
   type;
   intention;
@@ -40,7 +40,7 @@ export class LLMIntentionMessage {
 }
 
 export class LLMIntentionTakenChargeMessage {
-  static #TYPE = "llmintentiontakencharge"
+  static #TYPE = "llmintentiontakencharge";
 
   type;
   intention;
@@ -58,8 +58,47 @@ export class LLMIntentionTakenChargeMessage {
   }
 }
 
+export class LLMSetIdMessage {
+  static #TYPE = "llmsetId";
+
+  type;
+  llmAgentId;
+
+  /**
+   * @param {{llmAgentId: string}} llmAgentId
+   */
+  constructor({ llmAgentId }) {
+    this.type = LLMSetIdMessage.#TYPE;
+    this.llmAgentId = llmAgentId;
+  }
+
+  static get TYPE() {
+    return LLMSetIdMessage.#TYPE;
+  }
+}
+
+export class LLMParametersTuningRequestMessage {
+  static #TYPE = "llmparameterstuningrequest";
+
+  currentParameters;
+  type;
+
+  /**
+   * @param {{currentParameters: string}} currentParameters
+   */
+  constructor({ currentParameters }) {
+    this.type = LLMParametersTuningRequestMessage.#TYPE;
+    this.currentParameters = currentParameters;
+  }
+
+
+  static get TYPE() {
+    return LLMParametersTuningRequestMessage.#TYPE;
+  }
+}
+
 export class BDIResponseMessage {
-  static #TYPE = "bdiresponse"
+  static #TYPE = "bdiresponse";
 
   type;
   content;

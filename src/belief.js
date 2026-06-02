@@ -24,6 +24,8 @@ export class Me {
   #carriedParcelList;
   /**@type {string} */
   #mateId;
+  /**@type {string}*/
+  #llmId;
 
   /**
    * @param {string} id
@@ -40,6 +42,7 @@ export class Me {
     this.#coordinates = coordinates;
     this.#carriedParcelList = [];
     this.#mateId = "";
+    this.#llmId = "";
   }
 
   get id() {
@@ -70,6 +73,10 @@ export class Me {
     return this.#mateId;
   }
 
+  get llmId() {
+    return this.#llmId;
+  }
+
   set coordinates(c) {
     this.#coordinates = c;
   }
@@ -78,6 +85,10 @@ export class Me {
     if (!this.#mateId) {
       this.#mateId = value;
     }
+  }
+
+  set llmId(value) {
+    this.#llmId = value;
   }
 
   /**
@@ -814,13 +825,11 @@ export class Beliefs {
   getBeliefsForLLM() {
     const beliefs = `
     Our agent is in the following situation:
-      - Score: ${this.me.score}
-      - Penalty: ${this.me.penalty}
-      - Decay: ${this.parcelDecayTimerValue}
-      - Maximum number of parcels that can be simultaneously present: ${this.#maxParcelsPresent}
-      - Maximum parcel value: ${this.#parcelMaxScore}
-      - Number of agents: ${this.getNumberOfEncounteredAgents()}
-      - Mean of blocks during movements: ${this.goToInteractionData.getGoToBlockMean()}
+      - score of our agent: ${this.me.score}
+      - max number of parcel can spawn in map: ${this.#maxParcelsPresent}
+      - max score per parcel: ${this.#parcelMaxScore}
+      - number of agents: ${this.getNumberOfEncounteredAgents()}
+      - mean of attempts to follow a path: ${this.goToInteractionData.getGoToBlockMean()}
     `.trim();
 
     return beliefs;

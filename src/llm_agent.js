@@ -3,13 +3,15 @@
 import "dotenv/config";
 import OpenAI from "openai";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk";
-import { LLMIntentionMessage, BDIResponseMessage, HandshakeMessage } from "./message.js";
+import { LLMIntentionMessage, BDIResponseMessage, HandshakeMessage, LLMParametersTuningRequestMessage, LLMSetIdMessage } from "./message.js";
 import { LLMGoToIntention } from "./llm_intention.js";
 
 export class LLMAgent {
   #socket;
   /** @type { string } */
   #id;
+  /**@type {string} */
+  #mateId;
 
   #baseURL;
   /** @type { string | undefined } */
@@ -24,6 +26,14 @@ export class LLMAgent {
   #messages;
 
   /**
+   * Contains messages types for which the llm has to accept messages from both the agents
+   * @type {string[]}
+   */
+  #whitelist;
+
+  #wasLLMIdSent;
+
+  /**
    * @param {string} token 
    */
   constructor(token) {
@@ -32,7 +42,7 @@ export class LLMAgent {
     this.#baseURL = process.env.LITELLM_BASE_URL || "https://llm.bears.disi.unitn.it/v1";
     this.#apiKey = process.env.LITELLM_API_KEY;
     this.#model = process.env.LOCAL_MODEL || "llama-3.3-70b-lmstudio";
-
+    this.#wasLLMIdSent = false;
     if (!this.#apiKey) {
       console.error("Error: missing LITELLM_API_KEY in .env file");
       process.exit(1);
@@ -44,9 +54,19 @@ export class LLMAgent {
     });
 
     this.#id = "";
+    this.#mateId = "";
+    this.#whitelist = [HandshakeMessage.TYPE, LLMParametersTuningRequestMessage.TYPE];
 
-    this.#socket.onYou(agent => this.#id = agent.id);
+    this.#socket.onYou(agent => {
+      if (!this.#wasLLMIdSent) {
+        this.#wasLLMIdSent = true;
+        this.#id = agent.id;
+      }
+    });
+
     this.#socket.onMsg((id, name, msg) => this.#onMsg(id, name, msg));
+
+    this.#socket.on;
 
     this.#ACTION_PROMPT = `
       You are an AI assistant.
@@ -114,6 +134,7 @@ export class LLMAgent {
    * @param {{}} message
    */
   async #onMsg(id, name, message) {
+
     if (name == "Admin" || name == "admin") {
       // NOTE: Server sends simple strings
       const msg = String(message);
@@ -144,18 +165,31 @@ export class LLMAgent {
     }
 
     // Accept only messages from the associated BDI agent
-    if (
-      id != this.#id
-      // TODO: ignore every Message even if they come from the BDI agent but some special responses
-    ) {
+    // TODO: ignore every Message even if they come from the BDI agent but some special responses
+    if ((typeof message === "string") || !("type" in message) || ((id != this.#id || id != this.#mateId) && !this.#whitelist.includes(/**@type {string}*/(message.type)))) {
+      //Reject if message was written in chat (not useful at this point) or the message if from the other peer and it is not whitelisted
       return;
     }
 
     let msg;
 
-    // @ts-ignore
     switch (message.type) {
       case HandshakeMessage.TYPE:
+        if (!("key" in message)) {
+          return;
+        }
+        const handshakeKey = process.env.HANDSHAKE_KEY;
+        if (!handshakeKey) {
+          console.error("Error: missing HANDSHAKE_KEY in .env file");
+          process.exit(1);
+        }
+        const convertedMsg = new HandshakeMessage({ key: /**@type {string}*/(message.key) });
+        if (id != this.#id && convertedMsg.key == handshakeKey) {
+          const msg = new LLMSetIdMessage({ llmAgentId: this.#id });
+          this.#mateId = id;
+          this.#sendToAgent(msg);
+          this.#sendToAgent(msg, this.#mateId);
+        }
         break;
       case LLMIntentionMessage.TYPE:
         break;
@@ -164,12 +198,52 @@ export class LLMAgent {
         msg = new BDIResponseMessage(message);
         console.log(`LLM received "${msg.content}" from ${name}`);
         break;
+      case LLMParametersTuningRequestMessage.TYPE:
+        if (!("currentParameters" in message)) {
+          return;
+        }
+
+        msg = new LLMParametersTuningRequestMessage({ currentParameters: /**@type {string}*/(message.currentParameters) });
+        try {
+          const response = await this.#onParametersTuningRequestReceived(msg.currentParameters);
+          console.log(response); //TODO make response
+        } catch {
+          console.error("ANSWER FAILURE");
+        }
+        break;
+      default:
+        break;
     }
   }
 
   /**
+   * @param {string} currentParameters 
+  */
+  async #onParametersTuningRequestReceived(currentParameters) {
+
+    // Add the server task to memory
+    this.#messages.push({
+      role: "user",
+      content: currentParameters,
+    });
+
+    // Ask the model whether it wants to answer directly or use a tool.
+    const assistantDecision = await this.#callModel(this.#messages);
+    console.log(`Assistant decision:\n${assistantDecision}\n`);
+
+    // Store the result in a variable called assistantDecision and save it in the messages array.
+    this.#messages.push({
+      role: "assistant",
+      content: assistantDecision,
+    });
+
+    const res = this.#extractValues(assistantDecision);
+    return res;
+  }
+
+  /**
    * @param {string} task 
-   */
+  */
   async #onTaskReceived(task) {
     if (task.trim() == "") {
       return;
@@ -205,6 +279,7 @@ export class LLMAgent {
     }
 
     // ... otherwise a tool is requested, execute it
+    //@ts-ignore
     const { action, actionInput } = parsedAction;
     let observation;
 
@@ -282,7 +357,7 @@ export class LLMAgent {
     };
 
     const lines = text.split(/\r?\n|\r|\n/g);
-    const values = []
+    const values = [];
     for (const line of lines) {
       values.push(line.split(":")[1].trim());
     }
@@ -326,10 +401,11 @@ export class LLMAgent {
 
   /**
    * @param {Message} msg 
+   * @param {string} agentId
    */
-  #sendToAgent(msg) {
+  #sendToAgent(msg, agentId = this.#id) {
     this.#socket.emitSay(
-      this.#id,
+      agentId,
       msg
     );
   }

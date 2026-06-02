@@ -11,7 +11,7 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs, TargetTile } from "./belief.js";
 import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
-import { HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage } from './message.js';
+import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage } from './message.js';
 import { LLMGoToIntention } from './llm_intention.js';
 
 export class BDIAgent {
@@ -22,6 +22,8 @@ export class BDIAgent {
   #intentionPlanQueue;
   /** @type { Beliefs } */
   #internalBelief;
+  /**@type {boolean}*/
+  #wasRequestForTuningSent;
 
   /**
    * @param {string} token 
@@ -30,6 +32,7 @@ export class BDIAgent {
     this.#intentionPlanQueue = [];
     this.#internalBelief = new Beliefs();
     this.#socket = DjsConnect(undefined, token);
+    this.#wasRequestForTuningSent = false;
 
     this.init();
   }
@@ -105,10 +108,21 @@ export class BDIAgent {
       setInterval(async () => {
         await this.#generateBestIntention();
       }, 100);
+      //Ask the LLM for parameters fine tuning every 1-2 minutes
+      setInterval(async () => {
+        if (this.#wasRequestForTuningSent) {
+          return;
+        }
+
+        this.#wasRequestForTuningSent = true;
+        console.log("sending");
+        await this.#requestParametersTuningToLLM();
+        //TODO set this.#wasRequestForTuningSent to false when an answer is received
+      }, 5000);
     });
   }
 
-  async #handshake() {
+  #handshake() {
     const handshakeKey = process.env.HANDSHAKE_KEY;
     if (!handshakeKey) {
       console.error("Error: missing HANDSHAKE_KEY in .env file");
@@ -118,25 +132,36 @@ export class BDIAgent {
     this.#socket.emitShout(new HandshakeMessage({ key: handshakeKey }));
   }
 
+  async #requestParametersTuningToLLM() {
+    const msg = new LLMParametersTuningRequestMessage({ currentParameters: this.#internalBelief.getBeliefsForLLM() });
+
+    this.#socket.emitSay(this.#internalBelief.me.llmId, msg);
+  }
+
   /**
    * @param {string} id 
    * @param {string} name 
    * @param {{}} message
    */
-  async #onMsg(id, name, message) {
+  #onMsg(id, name, message) {
     let msg;
 
-    // if (!("type" in message)) {
-    //   return;
-    // }
+    if (typeof message === "string" || !("type" in message)) {
+      //Reject message if it was written in chat (string) or if is missing the type
+      return;
+    }
 
     switch (message.type) {
       case HandshakeMessage.TYPE:
-        // @ts-ignore
-        msg = new HandshakeMessage(message);
+
+        if (!("key" in message)) {
+          return;
+        }
+
+        msg = new HandshakeMessage({ key: /**@type {string}*/(message.key) });
         if (msg.key == process.env.HANDSHAKE_KEY) {
           this.#internalBelief.me.mateId = id;
-          // console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`)
+          //console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`);
         }
         break;
       case LLMIntentionMessage.TYPE:
@@ -175,8 +200,18 @@ export class BDIAgent {
         msg = new LLMIntentionTakenChargeMessage({ intention: castedMessage });
         // TODO: ok, I know what the other agent is doing
         break;
+      case LLMSetIdMessage.TYPE:
+        if (!("llmAgentId" in message)) {
+          return;
+        }
+
+        const messageId = /**@type {string} */(message.llmAgentId);
+        this.#internalBelief.me.llmId = messageId;
+
+        break;
       default:
         msg = String(message);
+        break;
       // if (msg) {
       //   console.log(`${this.#internalBelief.me.name} received ${msg} from ${name}`);
       // }
