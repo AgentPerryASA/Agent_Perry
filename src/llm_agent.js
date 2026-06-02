@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk";
 import { LLMIntentionMessage, BDIResponseMessage, HandshakeMessage } from "./message.js";
 import { LLMGoToIntention } from "./llm_intention.js";
+import { LLMUpdatedParameters } from "./belief.js";
 
 export class LLMAgent {
   #socket;
@@ -82,7 +83,7 @@ export class LLMAgent {
       - type of function to randomize the destination (cosine for higher randomicity, hyperbola for privileging close tiles)
       - multiplier m to get parcelMinScore = parcelMaxScore * m (between 0.2 and 0.6)
 
-      You are requested to provide new values for each parameter if useful to improve performance. Do not include any motivation, just reply in the form
+      You are requested to provide new values for each parameter if useful to improve performance. Compare the input with previous data if any to better understand how to predict the values. Do not include any motivation, just reply in the form
 
       - <given_param_description>: <new_value>
       `.trim();
@@ -192,6 +193,11 @@ export class LLMAgent {
     });
 
     const res = this.#extractValues(assistantDecision);
+
+    if (res) {
+      return res;
+    }
+
     return;
 
     // Parse the assistant decision
@@ -273,27 +279,26 @@ export class LLMAgent {
    * @param {string} text 
    */
   #extractValues(text) {
-    const res = {
-      numDeviation: 0,
-      blocksAfterAgent: 0,
-      movementDelay: 0,
-      randomFunction: "",
-      minScoreMultiplier: 0
-    };
-
     const lines = text.split(/\r?\n|\r|\n/g);
     const values = []
     for (const line of lines) {
       values.push(line.split(":")[1].trim());
     }
 
-    res.numDeviation = this.#clamp(Number(values[0]), 2, 5);
-    res.blocksAfterAgent = this.#clamp(Number(values[1]), 2, 4);
-    res.movementDelay = this.#clamp(Number(values[2].slice(0, -2)), 0, 100);
-    res.randomFunction = values[3];
-    res.minScoreMultiplier = this.#clamp(Number(values[4]), 0.2, 0.6);
+    const numDeviation = this.#clamp(Number(values[0]), 2, 5);
+    const blocksAfterAgent = this.#clamp(Number(values[1]), 2, 4);
+    const movementDelay = this.#clamp(Number(values[2].match(/\d+/)), 0, 100);
+    const randomFunction = values[3];
+    const minScoreMultiplier = this.#clamp(Number(values[4]), 0.2, 0.6);
 
-    return res;
+    return new LLMUpdatedParameters(
+      numDeviation,
+      0,
+      blocksAfterAgent,
+      movementDelay,
+      randomFunction,
+      minScoreMultiplier
+    );
   }
 
   /**

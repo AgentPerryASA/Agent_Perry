@@ -251,24 +251,42 @@ export class GoToInteractionData {
 
 export class LLMUpdatedParameters {
   /**@type {number}*/
+  #numberOfPossibleDeviations;
+
+  /**@type {number}*/
   #numberOfCheckedTilesForAgentPresence;
 
   /**@type {number}*/
   #numberOfIgnoredTilesForAgentPresence;
 
+  /**@type {number} */
+  #movementDelay;
+
+  /**@type {string}*/
+  #randomFunction;
+
   /**@type {number}*/
-  #numberOfPossibleDeviations;
+  #minScoreMultiplier;
 
   /**
-   * 
+   * @param {number} numberOfPossibleDeviations
    * @param {number} numberOfCheckedTilesForAgentPresence 
    * @param {number} numberOfIgnoredTilesForAgentPresence 
-   * @param {number} numberOfPossibleDeviations
+   * @param {number} movementDelay 
+   * @param {string} randomFunction 
+   * @param {number} minScoreMultiplier 
    */
-  constructor(numberOfCheckedTilesForAgentPresence, numberOfIgnoredTilesForAgentPresence, numberOfPossibleDeviations) {
+  constructor(numberOfPossibleDeviations, numberOfCheckedTilesForAgentPresence, numberOfIgnoredTilesForAgentPresence, movementDelay, randomFunction, minScoreMultiplier) {
+    this.#numberOfPossibleDeviations = numberOfPossibleDeviations;
     this.#numberOfCheckedTilesForAgentPresence = numberOfCheckedTilesForAgentPresence;
     this.#numberOfIgnoredTilesForAgentPresence = numberOfIgnoredTilesForAgentPresence;
-    this.#numberOfPossibleDeviations = numberOfPossibleDeviations;
+    this.#movementDelay = movementDelay;
+    this.#randomFunction = randomFunction;
+    this.#minScoreMultiplier = minScoreMultiplier;
+  }
+
+  get numberOfPossibleDeviations() {
+    return this.#numberOfPossibleDeviations;
   }
 
   get numberOfCheckedTilesForAgentPresence() {
@@ -279,8 +297,16 @@ export class LLMUpdatedParameters {
     return this.#numberOfIgnoredTilesForAgentPresence;
   }
 
-  get numberOfPossibleDeviations() {
-    return this.#numberOfPossibleDeviations;
+  get movementDelay() {
+    return this.#movementDelay;
+  }
+
+  get randomFunction() {
+    return this.#randomFunction;
+  }
+
+  get minScoreMultiplier() {
+    return this.#minScoreMultiplier;
   }
 }
 
