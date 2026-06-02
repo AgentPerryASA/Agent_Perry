@@ -79,10 +79,12 @@ export class LLMAgent {
       - number of possible deviations to pick up a parcel (between 2 and 5)
       - number of tiles to ignore after an obstacle on the path (between 2 and 4)
       - delay in sending movement request to the server (between 0 and 100 ms)
-      - type of function to randomize the destination (either cosine or hyperbola)
+      - type of function to randomize the destination (cosine for higher randomicity, hyperbola for privileging close tiles)
       - multiplier m to get parcelMinScore = parcelMaxScore * m (between 0.2 and 0.6)
 
-      You are requested to provide new values for each parameter if useful to improve performance.
+      You are requested to provide new values for each parameter if useful to improve performance. Do not include any motivation, just reply in the form
+
+      - <given_param_description>: <new_value>
       `.trim();
 
     this.#FINAL_ANSWER_PROMPT = `
@@ -101,7 +103,7 @@ export class LLMAgent {
     this.#messages = [
       {
         role: "system",
-        content: this.#ACTION_PROMPT
+        content: this.#INTRO_PROMPT
       }
     ];
   }
@@ -179,8 +181,6 @@ export class LLMAgent {
       content: task,
     });
 
-    console.log(this.#messages);
-
     // Ask the model whether it wants to answer directly or use a tool.
     const assistantDecision = await this.#callModel(this.#messages);
     console.log(`Assistant decision:\n${assistantDecision}\n`);
@@ -190,6 +190,9 @@ export class LLMAgent {
       role: "assistant",
       content: assistantDecision,
     });
+
+    const res = this.#extractValues(assistantDecision);
+    return;
 
     // Parse the assistant decision
     const parsedAction = this.#extractAction(assistantDecision);
@@ -264,6 +267,44 @@ export class LLMAgent {
     });
 
     return response.choices?.[0]?.message?.content ?? "";
+  }
+
+  /**
+   * @param {string} text 
+   */
+  #extractValues(text) {
+    const res = {
+      numDeviation: 0,
+      blocksAfterAgent: 0,
+      movementDelay: 0,
+      randomFunction: "",
+      minScoreMultiplier: 0
+    };
+
+    const lines = text.split(/\r?\n|\r|\n/g);
+    const values = []
+    for (const line of lines) {
+      values.push(line.split(":")[1].trim());
+    }
+
+    res.numDeviation = this.#clamp(Number(values[0]), 2, 5);
+    res.blocksAfterAgent = this.#clamp(Number(values[1]), 2, 4);
+    res.movementDelay = this.#clamp(Number(values[2].slice(0, -2)), 0, 100);
+    res.randomFunction = values[3];
+    res.minScoreMultiplier = this.#clamp(Number(values[4]), 0.2, 0.6);
+
+    return res;
+  }
+
+  /**
+   * @param {number} value
+   * @param {number} min 
+   * @param {number} max 
+   */
+  #clamp(value, min, max) {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
   }
 
   /**

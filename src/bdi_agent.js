@@ -126,9 +126,9 @@ export class BDIAgent {
   async #onMsg(id, name, message) {
     let msg;
 
-    if (!("type" in message)) {
-      return;
-    }
+    // if (!("type" in message)) {
+    //   return;
+    // }
 
     switch (message.type) {
       case HandshakeMessage.TYPE:
@@ -177,9 +177,9 @@ export class BDIAgent {
         break;
       default:
         msg = String(message);
-        if (msg) {
-          console.log(`${this.#internalBelief.me.name} received ${msg} from ${name}`);
-        }
+      // if (msg) {
+      //   console.log(`${this.#internalBelief.me.name} received ${msg} from ${name}`);
+      // }
     }
 
     // console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received "${msg.content}" from ${name}`)

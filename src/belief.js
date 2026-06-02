@@ -821,7 +821,8 @@ export class Beliefs {
       - Maximum parcel value: ${this.#parcelMaxScore}
       - Number of agents: ${this.getNumberOfEncounteredAgents()}
       - Mean of blocks during movements: ${this.goToInteractionData.getGoToBlockMean()}
-    `;
+    `.trim();
+
     return beliefs;
   }
 
