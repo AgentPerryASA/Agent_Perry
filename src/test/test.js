@@ -21,12 +21,3 @@ new BDIAgent(token2);
 new LLMAgent(token1);
 
 new Admin();
-
-// const str = `- number of possible deviations to pick up a parcel: 4
-//   - number of tiles to ignore after an obstacle on the path: 3
-//   - delay in sending movement request to the server: 30ms
-//   - type of function to randomize the destination: hyperbola
-//   - multiplier m to get parcelMinScore = parcelMaxScore * m: 0.5`.trim()
-// const l = str.split(/\r?\n|\r|\n/g)
-// console.log(l.length)
-// console.log(l)
