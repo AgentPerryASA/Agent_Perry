@@ -110,6 +110,7 @@ export class BDIAgent {
       setInterval(async () => {
         await this.#generateBestIntention();
       }, 100);
+
       //Ask the LLM for parameters fine tuning every 1-2 minutes
       setInterval(async () => {
         if (this.#wasRequestForTuningSent) {
@@ -120,7 +121,7 @@ export class BDIAgent {
 
         await this.#requestParametersTuningToLLM();
 
-      }, 5000);
+      }, 20 * 1000);
     });
   }
 
