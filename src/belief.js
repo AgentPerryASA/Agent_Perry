@@ -5,7 +5,6 @@
 /**@typedef IOCrate @type {import("@unitn-asa/deliveroo-js-sdk/types/IOSensing.js").IOCrate}*/
 
 import { Beliefset } from "@unitn-asa/pddl-client";
-
 import { PathFinder } from "./path_finder.js";
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan } from "./plan.js";
 import { GoToInteractionData, LLMUpdatedParameters, Parcel, WorldMap } from "./utils/beliefs_utils.js";
@@ -28,10 +27,13 @@ export class Beliefs {
   #carriedParcelsCount;
 
   /**@type {number} */
-  #parcelMinScore;
+  #parcelAvgScore;
 
   /**@type {number} */
-  #parcelMaxScore;
+  #parcelVarScore;
+
+  /**@type {number} */
+  #parcelMinScore;
 
   /**@type {number}*/
   #maxParcelsPresent;
@@ -93,8 +95,9 @@ export class Beliefs {
     this.#parcelList = [];
     this.#tileMap = new WorldMap([], [], [], []);
     this.#carriedParcelsCount = 0;
+    this.#parcelAvgScore = 0;
+    this.#parcelVarScore = 0;
     this.#parcelMinScore = 0;
-    this.#parcelMaxScore = 0;
     this.#maxParcelsPresent = 0;
     this.#gameSpeed = 0;
     this.#nearAgentList = [];
@@ -454,11 +457,9 @@ export class Beliefs {
 
   /**@param {IOConfig} config*/
   updateGameConfiguration(config) {
-    const avgScore = config.GAME.parcels.reward_avg;
-    const varScore = config.GAME.parcels.reward_variance;
-
-    this.#parcelMinScore = avgScore * this.#parcelMinScoreMultiplier;
-    this.#parcelMaxScore = avgScore + varScore;
+    this.#parcelAvgScore = config.GAME.parcels.reward_avg;
+    this.#parcelVarScore = config.GAME.parcels.reward_variance;
+    this.#parcelMinScore = this.#parcelAvgScore * this.#parcelMinScoreMultiplier;
 
     this.#parcelDecayTimerValue = Number(
       config.GAME.parcels.decaying_event.toString().split("s")[0],
@@ -570,7 +571,8 @@ export class Beliefs {
     input:
       - score: ${this.me.score}
       - max number of parcels: ${this.#maxParcelsPresent}
-      - max value of parcels: ${this.#parcelMaxScore}
+      - average score per parcel: ${this.#parcelAvgScore}
+      - variance score of parcels: ${this.#parcelVarScore}
       - number of agents: ${this.getNumberOfEncounteredAgents() + 1}
       - mean of attempts to follow a path: ${this.goToInteractionData.getGoToBlockMean()}
       - random function: cosine

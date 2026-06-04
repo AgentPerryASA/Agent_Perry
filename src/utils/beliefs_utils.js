@@ -142,12 +142,10 @@ export class GoToInteractionData {
   }
 
   getGoToBlockMean() {
-
     if (this.#numberOfStartedGoTo > 0) {
       return this.#globalBlockCounter / this.#numberOfStartedGoTo;
     }
 
     return 0;
   }
-
 };

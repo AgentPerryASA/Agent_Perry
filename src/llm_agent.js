@@ -92,8 +92,9 @@ export class LLMAgent {
       have to deliver them to the red ones. You will periodically receive these data as input in this exactly order:
 
       - score of our agent
-      - max number of parcel can spawn in map
-      - max score per parcel
+      - max number of parcels that can spawn in map
+      - average score per parcel
+      - variance score per parcel (final score is a random in [avg - var, avg + var])
       - number of agents
       - mean of attempts to follow a path
       - types of functions to select random destination tiles (used to explore the map)
