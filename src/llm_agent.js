@@ -23,12 +23,8 @@ export class LLMAgent {
   #client;
 
   #INTRO_ACTION_PROMPT;
-  #FINAL_ANSWER_PROMPT;
-  #INTRO_PROMPT;
-  // /**
-  //  * @type { {id: string, history: {role: string, content: string}}[] | undefined }
-  //  */
-  #messages;
+  #INTRO_PARAMS_TUNING_PROMPT;
+  #paramsTuningMessages;
   #actionMessages;
 
   /**
@@ -80,7 +76,7 @@ export class LLMAgent {
       have to deliver them to the red ones. There is a requirement that must always be respected: the answer must not contain any question or reasoning.
 
       Available tools:
-      - ignoreTask : use this tool only to say that it is not convenient to solve the task (because it would decrement the value of a parcel or the score of the agent). No input.
+      - ignoreTask: use this tool only to say that it is not convenient to solve the task (because it would decrement the value of a parcel or the score of the agent). No input.
       - ${calc.name}: calculate the result of a mathematical expression. Input is the mathematical expression.
       - ${findExtremePosition.name}: find an extreme position on the map. Available input are leftmost, rightmost, topmost and bottommost. If the position cannot be determine, the tool return the string "none". In such case, the next message must contain ignoreTask tool.
       - ${getLatLong.name}: get latitude and longitude of a real location (no tiles or coordinate of the game) given its english name. Input is the english name of a location (like a city).
@@ -90,9 +86,9 @@ export class LLMAgent {
 
       Available actions:
       - ${LLMGoToIntention.TYPE}: tell the agent to go to a specific tile. Use this tool also if the question ask to drop or pick up a parcel. Requires coordinates in the following format, containing:
-                                  - destinationX: <x coordinate>
-                                  - destinationY: <y coordinate>
-                                  Coordinates must be a positive integer number. This tool MUST be used if the question was to drop/get a parcel to/from some tile or to simply move to another place.
+        - destinationX: <x coordinate>
+        - destinationY: <y coordinate>
+        Coordinates must be a positive integer number. This tool MUST be used if the question was to drop/get a parcel to/from some tile or to simply move to another place.
       - directAnswer: make the agent say a certain phrase; Input is the phrase. Don't use this tool unless the question is asking to say some sort of information without involving any other action. Example: requiring to drop or get a parcel is not something suitable for this tool. If the question asked to go to a certain tile this action is not suitable.
 
       Do not include any motivation, just reply in the form:
@@ -102,10 +98,9 @@ export class LLMAgent {
       Every tool can be used with one input only. You must write only one action per message and one input per action. You must answer with the layout. You must answer with a definitive answer, no correction are allowed.
       
       You are required to analyze the history of messages, understand what tool is needed next or write the final answer as per instruction. Again, your answers has to only include the template.
-
       `.trim();
 
-    this.#INTRO_PROMPT = `
+    this.#INTRO_PARAMS_TUNING_PROMPT = `
       You are an AI assistant which goal is to fine tune some parameters of our agent in order to increase the performance in game.
       The game consists of some BDI agents that have to deliver parcels to get points. Parcels randomly spawn on green tiles and the agents
       have to deliver them to the red ones. You will periodically receive these data as input in this exactly order:
@@ -131,20 +126,7 @@ export class LLMAgent {
       - <given_param_description>: <new_value>
       `.trim();
 
-    this.#FINAL_ANSWER_PROMPT = `
-      You are an AI assistant.
-
-      You receive:
-      - the user's original request
-      - the action selected by the assistant, if any
-      - the observation returned by the tool, if any
-
-      Write a clear and concise final answer for the user.
-      If there was a tool error, explain it briefly.
-      Do not mention internal implementation details unless useful.
-      `.trim();
-
-    this.#messages = new Map();
+    this.#paramsTuningMessages = new Map();
 
     this.#actionMessages = [
       {
@@ -152,7 +134,6 @@ export class LLMAgent {
         content: this.#INTRO_ACTION_PROMPT
       }
     ];
-
   }
 
   /**
@@ -161,7 +142,6 @@ export class LLMAgent {
    * @param {{}} message
    */
   async #onMsg(id, name, message) {
-
     if (name == "Admin" || name == "admin") {
       // NOTE: Server sends simple strings
       const msg = String(message);
@@ -226,22 +206,22 @@ export class LLMAgent {
           this.#sendToAgent(msg);
           this.#sendToAgent(msg, this.#mateId);
 
-          // Use 2 different message history for the BDI agents
-          this.#messages.set(
+          // Use 2 different messages histories for the 2 BDI agents
+          this.#paramsTuningMessages.set(
             this.#id,
             [
               {
                 role: "system",
-                content: this.#INTRO_PROMPT
+                content: this.#INTRO_PARAMS_TUNING_PROMPT
               }
             ]
           );
-          this.#messages.set(
+          this.#paramsTuningMessages.set(
             this.#mateId,
             [
               {
                 role: "system",
-                content: this.#INTRO_PROMPT
+                content: this.#INTRO_PARAMS_TUNING_PROMPT
               }
             ]
           );
@@ -263,9 +243,9 @@ export class LLMAgent {
 
         msg = new LLMParametersTuningRequestMessage({ currentParameters: /**@type {string}*/(message.currentParameters) });
 
-        if (this.#messages.get(id).length == 7) {
+        if (this.#paramsTuningMessages.get(id).length == 7) {
           // If the conversation history is too long, forget about the oldest conversation (maintaining the INTRO_PROMPT)
-          this.#messages = this.#messages.get(id).splice(1, 2);
+          this.#paramsTuningMessages = this.#paramsTuningMessages.get(id).splice(1, 2);
         }
 
         const parameters = await this.#onParametersTuningRequested(id, msg.currentParameters);
@@ -295,17 +275,17 @@ export class LLMAgent {
     console.log(`(${id}) LLM received:`);
     console.log(text);
 
-    this.#messages.get(id).push({
+    this.#paramsTuningMessages.get(id).push({
       role: "user",
       content: text,
     });
 
     // Ask the model whether it wants to answer directly or use a tool.
-    const assistantDecision = await this.#callModel(this.#messages.get(id));
+    const assistantDecision = await this.#callModel(this.#paramsTuningMessages.get(id));
     console.log(`\n(${id}) Assistant decision:\n${assistantDecision}\n`);
 
     // Store the result in a variable called assistantDecision and save it in the messages array.
-    this.#messages.get(id).push({
+    this.#paramsTuningMessages.get(id).push({
       role: "assistant",
       content: assistantDecision,
     });
