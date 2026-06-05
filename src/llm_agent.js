@@ -6,6 +6,7 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk";
 import { LLMIntentionMessage, BDIResponseMessage, HandshakeMessage, LLMParametersTuningRequestMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage } from "./utils/message.js";
 import { LLMGoToIntention } from "./llm_intention.js";
 import { LLMUpdatedParameters } from "./utils/beliefs_utils.js";
+import { calc, findExtremePosition, getLatLong, getTemp, webSearch } from "./utils/llm_tools.js";
 
 export class LLMAgent {
   #socket;
@@ -21,10 +22,11 @@ export class LLMAgent {
 
   #client;
 
-  #ACTION_PROMPT;
+  #INTRO_ACTION_PROMPT;
   #FINAL_ANSWER_PROMPT;
   #INTRO_PROMPT;
   #messages;
+  #actionMessages;
 
   /**
    * Contains messages types for which the llm has to accept messages from both the agents
@@ -69,18 +71,35 @@ export class LLMAgent {
 
     this.#socket.on;
 
-    this.#ACTION_PROMPT = `
-      You are an AI assistant.
+    this.#INTRO_ACTION_PROMPT = `
+      You are an AI assistant whose goal is helping agents in a game to perform certain activity.
+      The game consists of some BDI agents that have to deliver parcels to get points. Parcels randomly spawn on green tiles and the agents
+      have to deliver them to the red ones. There is a requirement that must always be respected: the answer must not contain any question or reasoning.
 
       Available tools:
-      - ${LLMGoToIntention.TYPE}(dstX, dstY): move the user to the destination (dstX, dstY)
+      - ignoreTask : use this tool only to say that it is not convenient to solve the task (because it would decrement the value of a parcel or the score of the agent). No input.
+      - ${calc.name}: calculate the result of a mathematical expression. Input is the mathematical expression.
+      - ${findExtremePosition.name}: find an extreme position on the map. Available input are leftmost, rightmost, topmost and bottommost. If the position cannot be determine, the tool return the string "none". In such case, the next message must contain ignoreTask tool.
+      - ${getLatLong.name}: get latitude and longitude of a real location (no tiles or coordinate of the game) given its english name. Input is the english name of a location (like a city).
+      - ${getTemp.name}: get the current temperature in a location given its english name. Input is the english name of a location.
+      - setQuestion: set a question for a web search. Input is the question.
+      - ${webSearch.name}: get an information contained in a specific website. Use first the tool setQuestion before using this tool. Input is the url of the website. Use this tool only if there is not a more appropriate tool.
 
-      If the user asks for something that requires movement, respond exactly in this format:
+      Available actions:
+      - ${LLMGoToIntention.TYPE}: tell the agent to go to a specific tile. Use this tool also if the question ask to drop or pick up a parcel. Requires coordinates in the following format, containing:
+                                  - destinationX: <x coordinate>
+                                  - destinationY: <y coordinate>
+                                  Coordinates must be a positive integer number. This tool MUST be used if the question was to drop/get a parcel to/from some tile or to simply move to another place.
+      - directAnswer: make the agent say a certain phrase; Input is the phrase. Don't use this tool unless the question is asking to say some sort of information without involving any other action. Example: requiring to drop or get a parcel is not something suitable for this tool. If the question asked to go to a certain tile this action is not suitable.
 
-      Action: ${LLMGoToIntention.TYPE}
-      Action Input: (dstX, dstY)
+      Do not include any motivation, just reply in the form:
+        Action: <exact name of the action or the tool to use>
+        Input <input name or only Input if a tool is needed>: <eventual parameters of <input name or of the tool>, otherwise write none>
 
-      If no tool is needed, answer normally.
+      Every tool can be used with one input only. You must write only one action per message and one input per action. You must answer with the layout. You must answer with a definitive answer, no correction are allowed.
+      
+      You are required to analyze the history of messages, understand what tool is needed next or write the final answer as per instruction. Again, your answers has to only include the template.
+
       `.trim();
 
     this.#INTRO_PROMPT = `
@@ -127,6 +146,14 @@ export class LLMAgent {
         content: this.#INTRO_PROMPT
       }
     ];
+
+    this.#actionMessages = [
+      {
+        role: "system",
+        content: this.#INTRO_ACTION_PROMPT
+      }
+    ];
+
   }
 
   /**
@@ -136,12 +163,12 @@ export class LLMAgent {
    */
   async #onMsg(id, name, message) {
 
-    /*if (name == "Admin" || name == "admin") {
+    if (name == "Admin" || name == "admin") {
       // NOTE: Server sends simple strings
       const msg = String(message);
 
       // console.log(`LLM (${this.#id}) received "${msg.content}" from Server`)
-      const parsedAction = await this.#onTaskReceived(msg);
+      const parsedAction = await this.#onActionReceived(msg);
 
       if (parsedAction) {
         console.log("LLM Agent received the action:");
@@ -149,11 +176,20 @@ export class LLMAgent {
 
         let msg;
         let intention;
+
         switch (parsedAction.action) {
           case LLMGoToIntention.TYPE:
             const destinationCoordinates = LLMGoToIntention.parseInput(parsedAction.actionInput);
             intention = new LLMGoToIntention(destinationCoordinates);
+            console.log("RESULT: ", intention);
             break;
+          case "directAnswer":
+            console.log("RESULT: ", parsedAction.actionInput);
+            this.#socket.emitShout(parsedAction.actionInput);
+            break;
+          default:
+            console.log("RESULT DEFAULT: ", parsedAction.actionInput);
+            return;
         }
 
         if (intention) {
@@ -163,7 +199,7 @@ export class LLMAgent {
       }
 
       return;
-    }*/
+    }
 
     // Accept only messages from the associated BDI agent and its mate
     // TODO: ignore every Message even if they come from the BDI agent but some special responses
@@ -316,6 +352,100 @@ export class LLMAgent {
   }
 
   /**
+   * @param {string} task 
+  */
+  async #onActionReceived(task) {
+    let setQuestion = "";
+
+    if (task.trim() == "") {
+      return;
+    }
+
+    // Add the server task to memory
+    this.#actionMessages.push({
+      role: "user",
+      content: task,
+    });
+
+    // Ask the model whether it wants to answer directly or use a tool.
+    const assistantDecision = await this.#callModel(this.#actionMessages);
+
+    // Store the result in a variable called assistantDecision and save it in the messages array.
+    this.#actionMessages.push({
+      role: "assistant",
+      content: assistantDecision,
+    });
+
+    // Parse the assistant decision
+    const parsedAction = this.#extractAction(assistantDecision);
+
+    // If no tool is requested, the model already answered ...
+    if (!parsedAction) {
+      console.log(`Assistant pre-loop:\n ${assistantDecision}\n`);
+      return parsedAction;
+    }
+
+    // ... otherwise a tool is requested, execute it
+    let wasFinalAnswer = false;
+    let latestAnswer = assistantDecision;
+    let res;
+    let { action, actionInput } = { action: "a", actionInput: "b" };
+
+    do {
+      res = this.#extractAction(latestAnswer);
+      action = res ? res.action : "a";
+      actionInput = res ? res.actionInput : "b";
+      let result;
+      console.log(`Assistant:\n${assistantDecision}\n`);
+      console.log(action, actionInput, latestAnswer);
+      // Execute the selected tool
+      switch (action) {
+        case "ignoreTask":
+          return undefined;
+        case calc.name:
+          result = calc(actionInput);
+          break;
+        case getLatLong.name:
+          result = await getLatLong(actionInput);
+          break;
+        case getTemp.name:
+          result = await getTemp(actionInput);
+          break;
+        case "setQuestion":
+          setQuestion = actionInput;
+          break;
+        case webSearch.name:
+          result = await webSearch(actionInput, setQuestion);
+          break;
+        case findExtremePosition.name:
+          result = await findExtremePosition(this.#socket, this.#id, actionInput);
+          break;
+        default:
+          wasFinalAnswer = true;
+          break;
+      }
+
+      //If it was the final answer (no tool detected) break the cycle
+      if (wasFinalAnswer) {
+        //Clear the message list
+        this.#actionMessages.splice(1, this.#actionMessages.length);
+        console.log("END:", latestAnswer);
+        return res;
+      }
+
+      // Otherwise add the observation to memory
+      this.#actionMessages.push({
+        role: "user",
+        content: `Tool result for ${action} ("${actionInput}"): ${result}`,
+      });
+
+      //And repeat
+      latestAnswer = await this.#callModel(this.#actionMessages);
+      console.log("new answer", latestAnswer);
+    } while (!wasFinalAnswer);
+  }
+
+  /**
    * @param {{role: string, content: string}[]} messages 
    * @param {Number} temperature 
    */
@@ -372,7 +502,7 @@ export class LLMAgent {
    */
   #extractAction(text) {
     const actionMatch = text.match(/Action:\s*(.*)/);
-    const actionInputMatch = text.match(/Action Input:\s*(.*)/);
+    const actionInputMatch = text.match(/Input:\s*(.*)/);
 
     if (!actionMatch || !actionInputMatch) {
       return null;

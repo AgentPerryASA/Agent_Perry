@@ -1,4 +1,4 @@
-/** @typedef Message @type { HandshakeMessage | LLMIntentionMessage | LLMIntentionTakenChargeMessage | BDIResponseMessage | LLMSetIdMessage | LLMParametersTuningResponseMessage} */
+/** @typedef Message @type { HandshakeMessage | LLMIntentionMessage | LLMIntentionTakenChargeMessage | BDIResponseMessage | LLMSetIdMessage | LLMParametersTuningResponseMessage | LLMMapRequestMessage | LLMMapResponseMessage} */
 /** @typedef LLMIntention @type {import("../llm_intention.js").LLMIntention} */
 
 import { LLMUpdatedParameters } from "./beliefs_utils.js";
@@ -115,6 +115,41 @@ export class LLMParametersTuningResponseMessage {
 
   static get TYPE() {
     return LLMParametersTuningResponseMessage.#TYPE;
+  }
+}
+
+export class LLMMapRequestMessage {
+  static #TYPE = "llmmaprequest";
+  type;
+
+  constructor() {
+    this.type = LLMMapRequestMessage.#TYPE;
+  }
+
+  static get TYPE() {
+    return LLMMapRequestMessage.#TYPE;
+  }
+}
+
+export class LLMMapResponseMessage {
+  static #TYPE = "llmmapresponse";
+
+  /**@type {string[][]}*/
+  map;
+  type;
+
+  /**
+   * 
+   * @param {string[][]} map 
+   */
+  constructor(map) {
+    this.map = map;
+    this.type = LLMMapResponseMessage.#TYPE;
+  }
+
+
+  static get TYPE() {
+    return LLMMapResponseMessage.#TYPE;
   }
 }
 

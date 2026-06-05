@@ -11,7 +11,7 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs } from "./belief.js";
 import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
-import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage } from './utils/message.js';
+import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage } from './utils/message.js';
 import { LLMGoToIntention } from './llm_intention.js';
 import { LLMUpdatedParameters } from './utils/beliefs_utils.js';
 import { TargetTile } from './utils/path_utils.js';
@@ -91,7 +91,7 @@ export class BDIAgent {
       });
     }));
 
-    this.#socket.onMsg((id, name, msg) => this.#onMsg(id, name, msg));
+    this.#socket.onMsg((id, name, msg, reply) => this.#onMsg(id, name, msg, reply));
     // Ask the handshake to the team mate
     this.#handshake();
 
@@ -118,7 +118,7 @@ export class BDIAgent {
 
         this.#wasRequestForTuningSent = true;
 
-        await this.#requestParametersTuningToLLM();
+        //await this.#requestParametersTuningToLLM();
 
       }, 5000);
     });
@@ -144,8 +144,9 @@ export class BDIAgent {
    * @param {string} id 
    * @param {string} name 
    * @param {{}} message
+   * @param {Function} reply
    */
-  #onMsg(id, name, message) {
+  #onMsg(id, name, message, reply) {
     let msg;
 
     if (typeof message === "string" || !("type" in message)) {
@@ -222,6 +223,10 @@ export class BDIAgent {
 
         this.#wasRequestForTuningSent = false;
 
+        break;
+      case LLMMapRequestMessage.TYPE:
+        const response = new LLMMapResponseMessage(this.#internalBelief.tileMap.tiles);
+        reply(response);
         break;
       default:
         msg = String(message);
