@@ -226,6 +226,11 @@ export class LLMAgent {
 
         msg = new LLMParametersTuningRequestMessage({ currentParameters: /**@type {string}*/(message.currentParameters) });
 
+        if (this.#messages.get(id).length == 7) {
+          // If the conversation history is too long, forget about the oldest conversation (maintaining the INTRO_PROMPT)
+          this.#messages = this.#messages.get(id).splice(1, 2);
+        }
+
         const parameters = await this.#onParametersTuningRequested(id, msg.currentParameters);
 
         if (!(parameters instanceof LLMUpdatedParameters)) {
