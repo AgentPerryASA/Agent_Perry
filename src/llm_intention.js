@@ -17,7 +17,7 @@ export class LLMGoToIntention {
   }
 
   static get TYPE() {
-    return LLMGoToIntention.#TYPE;
+    return this.#TYPE;
   }
 
   /**

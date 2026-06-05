@@ -18,7 +18,7 @@ export class HandshakeMessage {
   }
 
   static get TYPE() {
-    return HandshakeMessage.#TYPE;
+    return this.#TYPE;
   }
 }
 
@@ -37,7 +37,7 @@ export class LLMIntentionMessage {
   }
 
   static get TYPE() {
-    return LLMIntentionMessage.#TYPE;
+    return this.#TYPE;
   }
 }
 
@@ -56,7 +56,7 @@ export class LLMIntentionTakenChargeMessage {
   }
 
   static get TYPE() {
-    return LLMIntentionTakenChargeMessage.#TYPE;
+    return this.#TYPE;
   }
 }
 
@@ -75,7 +75,7 @@ export class LLMSetIdMessage {
   }
 
   static get TYPE() {
-    return LLMSetIdMessage.#TYPE;
+    return this.#TYPE;
   }
 }
 
@@ -95,7 +95,7 @@ export class LLMParametersTuningRequestMessage {
 
 
   static get TYPE() {
-    return LLMParametersTuningRequestMessage.#TYPE;
+    return this.#TYPE;
   }
 }
 
@@ -114,7 +114,7 @@ export class LLMParametersTuningResponseMessage {
   }
 
   static get TYPE() {
-    return LLMParametersTuningResponseMessage.#TYPE;
+    return this.#TYPE;
   }
 }
 
@@ -168,6 +168,6 @@ export class BDIResponseMessage {
   }
 
   static get TYPE() {
-    return BDIResponseMessage.#TYPE;
+    return this.#TYPE;
   }
 }

@@ -5,13 +5,13 @@
 /**@typedef IOCrate @type {import("@unitn-asa/deliveroo-js-sdk/types/IOSensing.js").IOCrate}*/
 
 import { Beliefset } from "@unitn-asa/pddl-client";
-
 import { PathFinder } from "./path_finder.js";
 import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan } from "./plan.js";
 import { GoToInteractionData, LLMUpdatedParameters, Parcel, WorldMap } from "./utils/beliefs_utils.js";
 import { TargetTile } from "./utils/path_utils.js";
 import { Me } from "./me.js";
 import { Coordinates } from "./utils/coordinates.js";
+import { CosineRandomFunction, RandomFunction } from "./utils/random_function.js";
 
 export class Beliefs {
   /**@type {PathFinder | undefined}*/
@@ -27,10 +27,13 @@ export class Beliefs {
   #carriedParcelsCount;
 
   /**@type {number} */
-  #parcelMinScore;
+  #parcelAvgScore;
 
   /**@type {number} */
-  #parcelMaxScore;
+  #parcelVarScore;
+
+  /**@type {number} */
+  #parcelMinScore;
 
   /**@type {number}*/
   #maxParcelsPresent;
@@ -85,12 +88,16 @@ export class Beliefs {
   /**@type {number}*/
   #parcelMinScoreMultiplier;
 
+  /**@type {string} */
+  #randomFunctionType;
+
   constructor() {
     this.#parcelList = [];
     this.#tileMap = new WorldMap([], [], [], []);
     this.#carriedParcelsCount = 0;
+    this.#parcelAvgScore = 0;
+    this.#parcelVarScore = 0;
     this.#parcelMinScore = 0;
-    this.#parcelMaxScore = 0;
     this.#maxParcelsPresent = 0;
     this.#gameSpeed = 0;
     this.#nearAgentList = [];
@@ -107,6 +114,8 @@ export class Beliefs {
     this.#numberOfIgnoredTilesForAgentPresence = 2;
     this.#numberOfPossibleDeviations = 5;
     this.#parcelMinScoreMultiplier = 0.4;
+    this.#randomFunctionType = CosineRandomFunction.TYPE;
+    RandomFunction.setFunctionType(this.#randomFunctionType);
   }
 
   get planLibrary() {
@@ -220,7 +229,8 @@ export class Beliefs {
 
     this.#me.agentMovementDelay = parameters.movementDelay;
 
-    //TODO random function
+    this.#randomFunctionType = parameters.randomFunction;
+    RandomFunction.setFunctionType(this.#randomFunctionType);
 
     this.#parcelMinScoreMultiplier = parameters.minScoreMultiplier;
 
@@ -414,6 +424,10 @@ export class Beliefs {
       }
     }
 
+    this.#updatePathsWeights()
+  }
+
+  #updatePathsWeights() {
     // Calculate probability of each path from greens according to the distance
     for (let i = 0; i < this.tileMap.greenTiles.length; i++) {
       const green = this.#tileMap.greenTiles[i];
@@ -443,8 +457,9 @@ export class Beliefs {
 
   /**@param {IOConfig} config*/
   updateGameConfiguration(config) {
-    const avgScore = config.GAME.parcels.reward_avg;
-    this.#parcelMinScore = avgScore * this.#parcelMinScoreMultiplier;
+    this.#parcelAvgScore = config.GAME.parcels.reward_avg;
+    this.#parcelVarScore = config.GAME.parcels.reward_variance;
+    this.#parcelMinScore = this.#parcelAvgScore * this.#parcelMinScoreMultiplier;
 
     this.#parcelDecayTimerValue = Number(
       config.GAME.parcels.decaying_event.toString().split("s")[0],
@@ -556,16 +571,17 @@ export class Beliefs {
     input:
       - score: ${this.me.score}
       - max number of parcels: ${this.#maxParcelsPresent}
-      - max value of parcels: ${this.#parcelMaxScore}
-      - number of agents: ${this.getNumberOfEncounteredAgents()}
+      - average score per parcel: ${this.#parcelAvgScore}
+      - variance score of parcels: ${this.#parcelVarScore}
+      - number of agents: ${this.getNumberOfEncounteredAgents() + 1}
       - mean of attempts to follow a path: ${this.goToInteractionData.getGoToBlockMean()}
       - random function: cosine
 
-      current parameters:
+    current parameters:
       - number of possible deviations: ${this.#numberOfPossibleDeviations}
       - number of ignored tiles after obstacle: ${this.#numberOfIgnoredTilesForAgentPresence}
-      - delay per movement: ${this.#me.agentMovementDelay}ms
-      - random function: cosine
+      - delay per movement: ${this.#me.agentMovementDelay} ms
+      - random function: ${this.#randomFunctionType}
       - multiplier for parcelMinScore: ${this.#parcelMinScoreMultiplier}
     `.trim();
 
@@ -575,5 +591,4 @@ export class Beliefs {
   getNumberOfEncounteredAgents() {
     return this.#encounteredAgentsIdList.size;
   }
-
 }

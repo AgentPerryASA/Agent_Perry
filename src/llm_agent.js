@@ -25,11 +25,14 @@ export class LLMAgent {
   #INTRO_ACTION_PROMPT;
   #FINAL_ANSWER_PROMPT;
   #INTRO_PROMPT;
+  // /**
+  //  * @type { {id: string, history: {role: string, content: string}}[] | undefined }
+  //  */
   #messages;
   #actionMessages;
 
   /**
-   * Contains messages types for which the llm has to accept messages from both the agents
+   * Contains messages types for which the LLM has to accept messages from both the agents
    * @type {string[]}
    */
   #whitelist;
@@ -108,8 +111,9 @@ export class LLMAgent {
       have to deliver them to the red ones. You will periodically receive these data as input in this exactly order:
 
       - score of our agent
-      - max number of parcel can spawn in map
-      - max score per parcel
+      - max number of parcels that can spawn in map
+      - average score per parcel
+      - variance score per parcel (final score is a random in [avg - var, avg + var])
       - number of agents
       - mean of attempts to follow a path
       - types of functions to select random destination tiles (used to explore the map)
@@ -140,12 +144,7 @@ export class LLMAgent {
       Do not mention internal implementation details unless useful.
       `.trim();
 
-    this.#messages = [
-      {
-        role: "system",
-        content: this.#INTRO_PROMPT
-      }
-    ];
+    this.#messages = new Map();
 
     this.#actionMessages = [
       {
@@ -226,6 +225,26 @@ export class LLMAgent {
           this.#mateId = id;
           this.#sendToAgent(msg);
           this.#sendToAgent(msg, this.#mateId);
+
+          // Use 2 different message history for the BDI agents
+          this.#messages.set(
+            this.#id,
+            [
+              {
+                role: "system",
+                content: this.#INTRO_PROMPT
+              }
+            ]
+          );
+          this.#messages.set(
+            this.#mateId,
+            [
+              {
+                role: "system",
+                content: this.#INTRO_PROMPT
+              }
+            ]
+          );
         }
         break;
       case LLMIntentionMessage.TYPE:
@@ -240,9 +259,11 @@ export class LLMAgent {
           return;
         }
 
+        console.log(`\n${name}`);
+
         msg = new LLMParametersTuningRequestMessage({ currentParameters: /**@type {string}*/(message.currentParameters) });
 
-        const parameters = await this.#onTaskReceived(msg.currentParameters);
+        const parameters = await this.#onParametersTuningRequested(id, msg.currentParameters);
 
         if (!(parameters instanceof LLMUpdatedParameters)) {
           return;
@@ -251,7 +272,6 @@ export class LLMAgent {
         const responseMsg = new LLMParametersTuningResponseMessage({ updatedParameters: parameters });
 
         this.#sendToAgent(responseMsg, id);
-
         break;
       default:
         break;
@@ -259,25 +279,28 @@ export class LLMAgent {
   }
 
   /**
-   * @param {string} task 
+   * @param {string} id 
+   * @param {string} text 
   */
-  async #onTaskReceived(task) {
-    if (task.trim() == "") {
+  async #onParametersTuningRequested(id, text) {
+    if (text.trim() == "") {
       return;
     }
 
-    // Add the server task to memory
-    this.#messages.push({
+    console.log(`(${id}) LLM received:`);
+    console.log(text);
+
+    this.#messages.get(id).push({
       role: "user",
-      content: task,
+      content: text,
     });
 
     // Ask the model whether it wants to answer directly or use a tool.
-    const assistantDecision = await this.#callModel(this.#messages);
-    console.log(`Assistant decision:\n${assistantDecision}\n`);
+    const assistantDecision = await this.#callModel(this.#messages.get(id));
+    console.log(`\n(${id}) Assistant decision:\n${assistantDecision}\n`);
 
     // Store the result in a variable called assistantDecision and save it in the messages array.
-    this.#messages.push({
+    this.#messages.get(id).push({
       role: "assistant",
       content: assistantDecision,
     });
@@ -289,66 +312,6 @@ export class LLMAgent {
     }
 
     return;
-
-    // Parse the assistant decision
-    const parsedAction = this.#extractAction(assistantDecision);
-
-    // If no tool is requested, the model already answered ...
-    if (!parsedAction) {
-      console.log(`Assistant: ${assistantDecision}\n`);
-      console.log(`Memory contains ${this.#messages.length} messages.\n`);
-      return;
-    }
-
-    // ... otherwise a tool is requested, execute it
-    //@ts-ignore
-    const { action, actionInput } = parsedAction;
-    let observation;
-
-    // Execute the selected tool
-    if (action == LLMGoToIntention.TYPE) {
-      console.log(`[System executing tool: ${action} ("${actionInput}")]`);
-      observation = "MOVE"; // actual action for the BDI agent
-    } else {
-      observation = `Error: unknown tool '${action}'`;
-    }
-
-    console.log(`[Observation: ${observation}]\n`);
-
-    // Add the observation to memory
-    this.#messages.push({
-      role: "user",
-      content: `Observation: ${observation}`,
-    });
-
-    // Ask the model for the final answer
-    const finalAnswer = await this.#callModel(
-      [
-        {
-          role: "system",
-          content: this.#FINAL_ANSWER_PROMPT,
-        },
-        {
-          role: "user",
-          content:
-            `Original user request:\n${task}\n\n` +
-            `Assistant decision:\n${assistantDecision}\n\n` +
-            `Tool observation:\n${observation}`,
-        },
-      ]
-    );
-
-    console.log(`Assistant: ${finalAnswer}\n`);
-
-    // Store final answer in the conversation memory
-    this.#messages.push({
-      role: "assistant",
-      content: finalAnswer,
-    });
-
-    console.log(`Memory contains ${this.#messages.length} messages.\n`);
-
-    return parsedAction;
   }
 
   /**
