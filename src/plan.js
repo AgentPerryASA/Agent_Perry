@@ -13,6 +13,7 @@ import {
 } from "./intention.js";
 import { PathFinder } from "./path_finder.js";
 import { MapPoint } from "./utils/path_utils.js";
+import { LLMGoPutDownIntention, LLMGoToIntention, LLMIntention } from "./llm_intention.js";
 
 class NearbyAgent {
   /**@type {Boolean}*/
@@ -196,10 +197,10 @@ export class GoToPlan extends PlanBase {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   static isApplicable(intention) {
-    return GoToIntention.isTypeOf(intention);
+    return GoToIntention.isTypeOf(intention) || LLMGoToIntention.isTypeOf(intention);
   }
 
   /**
@@ -210,6 +211,7 @@ export class GoToPlan extends PlanBase {
     this.isStopped = false;
 
     const end = intention.destinationCoordinates;
+
     const goToInteractionData = this.agent.internalBelief.goToInteractionData;
     let blockPoint;
     let path = intention.path
@@ -588,7 +590,7 @@ export class DeviateUsingAStarPlan extends PlanBase {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   static isApplicable(intention) {
     return DeviateUsingAStarIntention.isTypeOf(intention);
@@ -723,7 +725,7 @@ export class DeviateUsingPlannerPlan extends PlanBase {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   static isApplicable(intention) {
     return DeviateUsingPlannerIntention.isTypeOf(intention);
@@ -740,7 +742,7 @@ export class DeviateUsingPlannerPlan extends PlanBase {
 
 export class GoPickUpPlan extends PlanBase {
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   static isApplicable(intention) {
     return GoPickUpIntention.isTypeOf(intention);
@@ -794,10 +796,10 @@ export class GoPutDownPlan extends PlanBase {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   static isApplicable(intention) {
-    return GoPutDownIntention.isTypeOf(intention);
+    return GoPutDownIntention.isTypeOf(intention) || LLMGoPutDownIntention.isTypeOf(intention);
   }
 
   /**
@@ -810,6 +812,7 @@ export class GoPutDownPlan extends PlanBase {
     const path = this.#pathFromDeviation
       ? this.#pathFromDeviation
       : intention.path;
+
     const subIntention = new GoToIntention(intention.deliveryCoordinates, path);
 
     const isCompleted = await this.achieveSubIntention(subIntention);
@@ -859,7 +862,7 @@ export class DeviateAndPickUpPlan extends PlanBase {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   static isApplicable(intention) {
     return DeviateAndPickUpIntention.isTypeOf(intention);

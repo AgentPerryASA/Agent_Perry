@@ -3,6 +3,7 @@
 
 import { Coordinates } from "./utils/coordinates.js";
 import { MapPoint } from "./utils/path_utils.js";
+import { LLMIntention } from "./llm_intention.js";
 
 export class GoToIntention {
   /**@type {Coordinates} */
@@ -28,7 +29,7 @@ export class GoToIntention {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   isEqual(intention) {
     // NOTE: destinationCoordinates attribute in intention if first condition true, so safe check
@@ -37,7 +38,7 @@ export class GoToIntention {
   }
 
   /**
-   * @param {Intention} intention 
+   * @param {Intention | LLMIntention} intention 
    */
   static isTypeOf(intention) {
     return intention instanceof this;
@@ -68,7 +69,7 @@ export class DeviateUsingPlannerIntention {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   isEqual(intention) {
 
@@ -95,7 +96,7 @@ export class DeviateUsingPlannerIntention {
   }
 
   /**
-   * @param {Intention} intention 
+   * @param {Intention | LLMIntention} intention 
    */
   static isTypeOf(intention) {
     return intention instanceof this;
@@ -136,7 +137,7 @@ export class DeviateUsingAStarIntention {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   isEqual(intention) {
     const instance = intention instanceof this.constructor;
@@ -164,7 +165,7 @@ export class DeviateUsingAStarIntention {
   }
 
   /**
-   * @param {Intention} intention 
+   * @param {Intention | LLMIntention} intention 
    */
   static isTypeOf(intention) {
     return intention instanceof this;
@@ -195,7 +196,7 @@ export class GoPickUpIntention {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   isEqual(intention) {
     // NOTE: parcel attribute in intention if first condition true, so safe check
@@ -204,7 +205,7 @@ export class GoPickUpIntention {
   }
 
   /**
-   * @param {Intention} intention 
+   * @param {Intention | LLMIntention} intention 
    */
   static isTypeOf(intention) {
     return intention instanceof this;
@@ -214,12 +215,12 @@ export class GoPickUpIntention {
 export class GoPutDownIntention {
   /**@type {Coordinates}*/
   #deliveryCoordinates;
-  /**@type {MapPoint[]}*/
+  /**@type {MapPoint[] | undefined}*/
   #path;
 
   /**
    * @param {Coordinates} deliveryCoordinates
-   * @param {MapPoint[]} path 
+   * @param {MapPoint[] | undefined} path 
    */
   constructor(deliveryCoordinates, path) {
     this.#deliveryCoordinates = deliveryCoordinates;
@@ -235,7 +236,7 @@ export class GoPutDownIntention {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   isEqual(intention) {
     // NOTE: deliveryCoordinates attribute in intention if first condition true, so safe check
@@ -244,7 +245,7 @@ export class GoPutDownIntention {
   }
 
   /**
-   * @param {Intention} intention 
+   * @param {Intention | LLMIntention} intention 
    */
   static isTypeOf(intention) {
     return intention instanceof this;
@@ -282,7 +283,7 @@ export class DeviateAndPickUpIntention {
   }
 
   /**
-   * @param {Intention} intention
+   * @param {LLMIntention | Intention} intention
    */
   isEqual(intention) {
     // NOTE: parcel attribute in intention if first condition true, so safe check
@@ -291,7 +292,7 @@ export class DeviateAndPickUpIntention {
   }
 
   /**
-   * @param {Intention} intention 
+   * @param {Intention | LLMIntention} intention 
    */
   static isTypeOf(intention) {
     return intention instanceof this;

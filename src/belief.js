@@ -424,7 +424,7 @@ export class Beliefs {
       }
     }
 
-    this.#updatePathsWeights()
+    this.#updatePathsWeights();
   }
 
   #updatePathsWeights() {

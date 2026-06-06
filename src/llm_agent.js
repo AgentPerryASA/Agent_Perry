@@ -4,9 +4,10 @@ import "dotenv/config";
 import OpenAI from "openai";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk";
 import { LLMIntentionMessage, BDIResponseMessage, HandshakeMessage, LLMParametersTuningRequestMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage } from "./utils/message.js";
-import { LLMGoToIntention } from "./llm_intention.js";
+import { LLMGoPutDownIntention, LLMGoToIntention } from "./llm_intention.js";
 import { LLMUpdatedParameters } from "./utils/beliefs_utils.js";
 import { calc, findExtremePosition, getLatLong, getTemp, webSearch } from "./utils/llm_tools.js";
+import { Coordinates } from "./utils/coordinates.js";
 
 export class LLMAgent {
   #socket;
@@ -73,11 +74,11 @@ export class LLMAgent {
     this.#INTRO_ACTION_PROMPT = `
       You are an AI assistant whose goal is helping agents in a game to perform certain activity.
       The game consists of some BDI agents that have to deliver parcels to get points. Parcels randomly spawn on green tiles and the agents
-      have to deliver them to the red ones. There is a requirement that must always be respected: the answer must not contain any question or reasoning.
+      have to deliver them to the red ones. There is a requirement that must always be respected: the answer must not contain any question or reasoning. Do not use your internal knowledge if a tool is available.
 
       Available tools:
       - ignoreTask: use this tool only to say that it is not convenient to solve the task (because it would decrement the value of a parcel or the score of the agent). No input.
-      - ${calc.name}: calculate the result of a mathematical expression. Input is the mathematical expression.
+      - ${calc.name}: calculate the result of a mathematical expression. Input is the mathematical expression. If there are multiple = sign in the starting expression, this tool has to be used multiple times.
       - ${findExtremePosition.name}: find an extreme position on the map. Available input are leftmost, rightmost, topmost and bottommost. If the position cannot be determine, the tool return the string "none". In such case, the next message must contain ignoreTask tool.
       - ${getLatLong.name}: get latitude and longitude of a real location (no tiles or coordinate of the game) given its english name. Input is the english name of a location (like a city).
       - ${getTemp.name}: get the current temperature in a location given its english name. Input is the english name of a location.
@@ -85,10 +86,16 @@ export class LLMAgent {
       - ${webSearch.name}: get an information contained in a specific website. Use first the tool setQuestion before using this tool. Input is the url of the website. Use this tool only if there is not a more appropriate tool.
 
       Available actions:
-      - ${LLMGoToIntention.TYPE}: tell the agent to go to a specific tile. Use this tool also if the question ask to drop or pick up a parcel. Requires coordinates in the following format, containing:
-        - destinationX: <x coordinate>
-        - destinationY: <y coordinate>
-        Coordinates must be a positive integer number. This tool MUST be used if the question was to drop/get a parcel to/from some tile or to simply move to another place.
+      - ${LLMGoToIntention.TYPE}: tell the agent to go to a specific tile. Use this tool also if the question ask to pick up a parcel. Requires coordinates in the following format, containing:
+
+        destinationX: <x coordinate> destinationY: <y coordinate>
+
+        Coordinates must be a positive integer number. This tool MUST be used if the question was to get a parcel from some tile or to simply move to another place.
+      - ${LLMGoPutDownIntention.TYPE}: tell the agent to drop a parcel in a specific tile. Do not use this tool for any other reason. Requires coordinates in the following format, containing:
+
+        destinationX: <x coordinate> destinationY: <y coordinate>
+
+        Coordinates must be a positive integer number. This tool MUST be used if the question was to drop a parcel in some tile.
       - directAnswer: make the agent say a certain phrase; Input is the phrase. Don't use this tool unless the question is asking to say some sort of information without involving any other action. Example: requiring to drop or get a parcel is not something suitable for this tool. If the question asked to go to a certain tile this action is not suitable.
 
       Do not include any motivation, just reply in the form:
@@ -137,6 +144,23 @@ export class LLMAgent {
   }
 
   /**
+   * 
+   * @param {string} actionInput 
+   */
+  #recoverCoordinatesFromActionInput(actionInput) {
+    const match = actionInput.match(
+      /destinationX:\s*(-?\d+(?:\.\d+)?)\s*,?\s*destinationY:\s*(-?\d+(?:\.\d+)?)/
+    );
+    if (match) {
+      const destinationX = Number(match[1]);
+      const destinationY = Number(match[2]);
+      return [destinationX, destinationY];
+    } else {
+      return undefined;
+    }
+  }
+
+  /**
    * @param {string} id 
    * @param {string} name 
    * @param {{}} message
@@ -146,24 +170,30 @@ export class LLMAgent {
       // NOTE: Server sends simple strings
       const msg = String(message);
 
-      // console.log(`LLM (${this.#id}) received "${msg.content}" from Server`)
       const parsedAction = await this.#onActionReceived(msg);
-
       if (parsedAction) {
-        console.log("LLM Agent received the action:");
-        console.log(parsedAction);
-
         let msg;
         let intention;
 
         switch (parsedAction.action) {
           case LLMGoToIntention.TYPE:
-            const destinationCoordinates = LLMGoToIntention.parseInput(parsedAction.actionInput);
-            intention = new LLMGoToIntention(destinationCoordinates);
-            console.log("RESULT: ", intention);
+            const extrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
+
+            if (extrCoord) {
+              const coordinates = new Coordinates(extrCoord[0], extrCoord[1]);
+              const intention = new LLMGoToIntention(coordinates);
+              this.#sendToAgent(intention);
+            }
+            break;
+          case LLMGoPutDownIntention.TYPE:
+            const pdExtrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
+            if (pdExtrCoord) {
+              const coordinates = new Coordinates(pdExtrCoord[0], pdExtrCoord[1]);
+              const intention = new LLMGoPutDownIntention(coordinates);
+              this.#sendToAgent(intention);
+            }
             break;
           case "directAnswer":
-            console.log("RESULT: ", parsedAction.actionInput);
             this.#socket.emitShout(parsedAction.actionInput);
             break;
           default:
@@ -232,14 +262,11 @@ export class LLMAgent {
       case BDIResponseMessage.TYPE:
         // @ts-ignore
         msg = new BDIResponseMessage(message);
-        console.log(`LLM received "${msg.content}" from ${name}`);
         break;
       case LLMParametersTuningRequestMessage.TYPE:
         if (!("currentParameters" in message)) {
           return;
         }
-
-        console.log(`\n${name}`);
 
         msg = new LLMParametersTuningRequestMessage({ currentParameters: /**@type {string}*/(message.currentParameters) });
 
@@ -272,8 +299,8 @@ export class LLMAgent {
       return;
     }
 
-    console.log(`(${id}) LLM received:`);
-    console.log(text);
+    //console.log(`(${id}) LLM received:`);
+    //console.log(text);
 
     this.#paramsTuningMessages.get(id).push({
       role: "user",
@@ -282,7 +309,7 @@ export class LLMAgent {
 
     // Ask the model whether it wants to answer directly or use a tool.
     const assistantDecision = await this.#callModel(this.#paramsTuningMessages.get(id));
-    console.log(`\n(${id}) Assistant decision:\n${assistantDecision}\n`);
+    //console.log(`\n(${id}) Assistant decision:\n${assistantDecision}\n`);
 
     // Store the result in a variable called assistantDecision and save it in the messages array.
     this.#paramsTuningMessages.get(id).push({
@@ -329,7 +356,6 @@ export class LLMAgent {
 
     // If no tool is requested, the model already answered ...
     if (!parsedAction) {
-      console.log(`Assistant pre-loop:\n ${assistantDecision}\n`);
       return parsedAction;
     }
 
@@ -340,12 +366,11 @@ export class LLMAgent {
     let { action, actionInput } = { action: "a", actionInput: "b" };
 
     do {
+      //console.log(latestAnswer);
       res = this.#extractAction(latestAnswer);
       action = res ? res.action : "a";
       actionInput = res ? res.actionInput : "b";
       let result;
-      console.log(`Assistant:\n${assistantDecision}\n`);
-      console.log(action, actionInput, latestAnswer);
       // Execute the selected tool
       switch (action) {
         case "ignoreTask":
@@ -377,7 +402,7 @@ export class LLMAgent {
       if (wasFinalAnswer) {
         //Clear the message list
         this.#actionMessages.splice(1, this.#actionMessages.length);
-        console.log("END:", latestAnswer);
+        //console.log("END:", latestAnswer);
         return res;
       }
 
@@ -389,7 +414,6 @@ export class LLMAgent {
 
       //And repeat
       latestAnswer = await this.#callModel(this.#actionMessages);
-      console.log("new answer", latestAnswer);
     } while (!wasFinalAnswer);
   }
 

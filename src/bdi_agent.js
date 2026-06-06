@@ -2,8 +2,6 @@
 /** @typedef Plan @type { import('./plan.js').Plan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 /** @typedef Message @type { import("./utils/message.js").Message } */
-/** @typedef LLMIntention @type {import("./llm_intention.js").LLMIntention} */
-
 
 import 'dotenv/config';
 import { Coordinates } from "./utils/coordinates.js";
@@ -12,15 +10,15 @@ import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpI
 import { Beliefs } from "./belief.js";
 import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
 import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage } from './utils/message.js';
-import { LLMGoToIntention } from './llm_intention.js';
 import { LLMUpdatedParameters } from './utils/beliefs_utils.js';
 import { TargetTile } from './utils/path_utils.js';
+import { LLMGoPutDownIntention, LLMGoToIntention, LLMIntention } from "./llm_intention.js";
 
 export class BDIAgent {
   #socket;
   /** @type { LLMIntention | undefined } */
   #llmIntention;
-  /** @type { {intention: Intention, plan: Plan}[] } */
+  /** @type { {intention: Intention | LLMIntention, plan: Plan}[] } */
   #intentionPlanQueue;
   /** @type { Beliefs } */
   #internalBelief;
@@ -168,41 +166,18 @@ export class BDIAgent {
           //console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`);
         }
         break;
-      case LLMIntentionMessage.TYPE:
-        // TODO: No way to know if it is sent by LLM or other agent, #llmIntention is null
-
-        //Verify integrity of the message
-        if (!("intention" in message) || !message.intention || !(typeof message.intention === "object") || !("type" in message.intention) || !("destinationCoordinates" in message.intention)) {
+      case LLMGoToIntention.TYPE:
+        if (!("destinationCoordinates" in message)) {
           return;
         }
-
-        //Safe casting given the checked type with the switch
-        const destinationCoordinates = /** @type {Coordinates} */(message.intention.destinationCoordinates);
-
-        if (message.intention.type == LLMGoToIntention.TYPE) {
-          this.#llmIntention = new LLMGoToIntention(destinationCoordinates);
-          msg = new LLMIntentionMessage({ intention: this.#llmIntention });
-        }
-
-        // @ts-ignore
-        // msg = new LLMIntentionMessage(message);
-        console.log(`${this.#internalBelief.me.name} received (${msg.intention}}) from LLM`);
-
-        // this.#llmIntention = msg.intention;
-
-        // this.#sendToMate(`Do (${msg.action}, ${msg.actionInput})`);
-        // const response = new BDIRespondeMessage({ content: "No thanks" });
-        // this.#sendToLLM(response);
+        this.#llmIntention = new LLMGoToIntention(/**@type {Coordinates}*/(message.destinationCoordinates));
         break;
-      case LLMIntentionTakenChargeMessage.TYPE:
-        console.log(`${this.#internalBelief.me.name} OK`);
-        // The other agent has taken charge the LLM intention
+      case LLMGoPutDownIntention.TYPE:
+        if (!("deliveryCoordinates" in message)) {
+          return;
+        }
+        this.#llmIntention = new LLMGoPutDownIntention(/**@type {Coordinates}*/(message.deliveryCoordinates));
 
-        //Safe casting given the checked type with the switch
-        const castedMessage = /**@type {LLMIntention}*/(message);
-
-        msg = new LLMIntentionTakenChargeMessage({ intention: castedMessage });
-        // TODO: ok, I know what the other agent is doing
         break;
       case LLMSetIdMessage.TYPE:
         if (!("llmAgentId" in message)) {
@@ -232,12 +207,7 @@ export class BDIAgent {
       default:
         msg = String(message);
         break;
-      // if (msg) {
-      //   console.log(`${this.#internalBelief.me.name} received ${msg} from ${name}`);
-      // }
     }
-
-    // console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received "${msg.content}" from ${name}`)
   }
 
   /**
@@ -262,35 +232,12 @@ export class BDIAgent {
     );
   }
 
-  #teo = false;
   async #generateBestIntention() {
-    let bestIntention = this.#selectBestIntention();
-
-    if (this.#llmIntention && !this.#teo) {
-      const llmIntentionConverted = this.#convertLLMIntention();
-      console.log(llmIntentionConverted);
-
-      if (llmIntentionConverted) {
-        // In case this agent decided to take charge the LLM intention ...
-        bestIntention = llmIntentionConverted;
-
-        console.log(`${this.#internalBelief.me.name} has taken charge LLM intention`);
-
-        const message = new LLMIntentionTakenChargeMessage({ intention: this.#llmIntention });
-        this.#sendToMate(message);
-
-        this.#teo = true;
-      } else {
-        // ... otherwise, forward the LLM intention to the mate
-        const message = new LLMIntentionMessage({ intention: this.#llmIntention });
-
-        this.#sendToMate(message);
-
-        this.#llmIntention = undefined;
-      }
-
-      // TODO: respond to LLM about any decision?
-    }
+    //LLM intention always have priority
+    /**
+     * @type {LLMIntention | Intention | undefined}
+     */
+    let bestIntention = this.#llmIntention ? this.#llmIntention : this.#selectBestIntention();
 
     if (bestIntention) {
       await this.#pushIntention(bestIntention);
@@ -407,26 +354,20 @@ export class BDIAgent {
     return new GoToIntention(green.coordinates);
   }
 
-  #convertLLMIntention() {
-    if (this.#llmIntention && this.#llmIntention.type == LLMGoToIntention.TYPE) {
-      // TODO: revision
-
-      return new GoToIntention(this.#llmIntention.destinationCoordinates);
-    }
-  }
-
   /**
-   * @param {Intention} intention 
+   * @param {Intention | LLMIntention} intention 
    */
   async #pushIntention(intention) {
-    // Skip push if the intention is already in the queue
+    // Skip push if the intention is already in the queue or in the queue there is a LLM intention (LLM intention have priority)
     for (const intentionPlan of this.#intentionPlanQueue) {
-      if (intentionPlan.intention.isEqual(intention)) {
+      const extractedIntention = intentionPlan.intention;
+      if (extractedIntention.isEqual(intention) || LLMIntention.isTypeOf(extractedIntention)) {
         return;
       }
     }
 
     const plan = this.selectPlan(intention);
+
     // Skip push if no plan can satisfy the intention
     if (!plan) {
       return;
@@ -440,7 +381,28 @@ export class BDIAgent {
       this.#intentionPlanQueue.pop();
     }
 
+    //If a GoPutDownIntention was present in the queue and the new intention is a LLMGoPutDown replace the previous one instead of pushing a new one. In this particular situation, a push is not needed
+
+    const goPutDownIntentionInQueueIndex = this.#getIndexOfFirstInstanceOfTypeInQueue(GoPutDownIntention);
+
+    if (goPutDownIntentionInQueueIndex && this.#llmIntention && LLMGoPutDownIntention.isTypeOf(this.#llmIntention)) {
+      //Create replacement plan and intention
+      const intentionReplacement = new GoPutDownIntention(this.#llmIntention.deliveryCoordinates, undefined);
+
+      this.#intentionPlanQueue[goPutDownIntentionInQueueIndex] = { intention: intentionReplacement, plan: plan };
+
+      this.#llmIntention = undefined;
+
+      return;
+    }
+
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
+
+
+    if (LLMIntention.isTypeOf(intention)) {
+      //Now that the intention is about to be executed, free the received llmintention
+      this.#llmIntention = undefined;
+    }
 
     await this.#achieveCurrentIntention();
   }
@@ -481,7 +443,7 @@ export class BDIAgent {
   }
 
   /**
-   * @param {Intention} intention 
+   * @param {LLMIntention | Intention} intention 
    */
   #assignCurrentTargetTile(intention) {
     if (GoPickUpIntention.isTypeOf(intention)) {
@@ -532,6 +494,18 @@ export class BDIAgent {
     return this.#intentionPlanQueue.find(obj => obj.intention instanceof intentionClass)?.intention;
   }
 
+  /**
+   * @param {typeof GoToIntention | typeof GoPickUpIntention | typeof GoPutDownIntention | typeof DeviateAndPickUpIntention} intentionClass
+  */
+  #getIndexOfFirstInstanceOfTypeInQueue(intentionClass) {
+    for (let i = 0; i < this.#intentionPlanQueue.length; i += 1) {
+      if (intentionClass.isTypeOf(this.#intentionPlanQueue[i].intention)) {
+        return i;
+      }
+    }
+    return undefined;
+  }
+
   /** @type { function ({x:number, y:number}, {x:number, y:number}): number } */
   #distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
     const dx = Math.abs(Math.round(x1) - Math.round(x2));
@@ -540,7 +514,7 @@ export class BDIAgent {
   }
 
   /**
-   * @param {Intention} intention 
+   * @param {LLMIntention | Intention} intention 
    */
   selectPlan(intention) {
     for (const plan of this.#internalBelief.planLibrary) {
