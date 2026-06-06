@@ -106,3 +106,47 @@ export class LLMGoToIntention extends LLMIntention {
     return intention instanceof this;
   }
 }
+
+export class LLMGreenRedLightIntention extends LLMIntention {
+  static #TYPE = "greenRedLight";
+
+  type;
+  destinationCoordinates;
+
+  /**
+   * @param {Coordinates} destinationCoordinates 
+   */
+  constructor(destinationCoordinates) {
+    super();
+    this.type = LLMGreenRedLightIntention.#TYPE;
+    this.destinationCoordinates = destinationCoordinates;
+  }
+
+  static get TYPE() {
+    return this.#TYPE;
+  }
+
+  /**
+   * @param {string} Input 
+   */
+  static parseInput(Input) {
+    // TODO: from (x, y) to Coordinates(x, y)
+    return new Coordinates(0, 0);
+  }
+
+  /**
+   * @param {LLMIntention | Intention} intention
+   */
+  isEqual(intention) {
+    // NOTE: destinationCoordinates attribute in intention if first condition true, so safe check
+    // @ts-ignore
+    return intention instanceof this.constructor && this.destinationCoordinates.isEqual(intention.destinationCoordinates);
+  }
+
+  /**
+   * @param {LLMIntention | Intention} intention 
+   */
+  static isTypeOf(intention) {
+    return intention instanceof this;
+  }
+}

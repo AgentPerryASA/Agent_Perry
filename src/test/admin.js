@@ -12,7 +12,17 @@ export class Admin {
       undefined,
       process.env.ADMIN_TOKEN
     );
-    this.#tasks = [`Go to one of these coordinates [("x":11,"y":12),("x":12,"y":12),("x":13,"y":12)} and receives one bouns of 500pts`, `Drop a package in the leftmost tile to get 5pt`, `Move to x=4*2 y=(1+3)-3 to get 30pt`, `Calculate 5*5`, `What is the temperature in Rome?`, "What are the coordinates of Rome?"];
+
+    this.#tasks = [
+      `Go to one of these coordinates [("x":11,"y":12),("x":12,"y":12),("x":13,"y":12)} and receives one bouns of 500pts`,
+      // `Drop a package in the leftmost tile to get 5pt`,
+      // `Move to x=4*2 y=(1+3)-3 to get 30pt`,
+      // `Calculate 5*5`,
+      // `What is the temperature in Rome?`,
+      // `What are the coordinates of Rome?`,
+      // `All agents must move to an odd-numbered row and wait for our message before moving again, as in a “red light, green light” game. 700 points bonus.`
+    ];
+
     this.#send();
   }
 
@@ -24,8 +34,6 @@ export class Admin {
       await rl.question("Press Enter to continue...");
       console.log(task);
       this.#socket.emitShout(task);
-
     }
-
   }
 }

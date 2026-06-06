@@ -172,6 +172,7 @@ export class LLMAgent {
       const msg = String(message);
 
       const parsedAction = await this.#onActionReceived(msg);
+
       if (parsedAction) {
         let msg;
         let intention;
@@ -357,7 +358,7 @@ export class LLMAgent {
 
     // If no tool is requested, the model already answered ...
     if (!parsedAction) {
-      return parsedAction;
+      return;
     }
 
     // ... otherwise a tool is requested, execute it
