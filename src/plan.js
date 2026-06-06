@@ -171,8 +171,8 @@ class PlanBase {
 export class GoToPlan extends PlanBase {
   #pathFinder;
   #MAX_MOVE_ATTEMPTS = 5;
-  #TILES_TO_CHECK_FOR_AGENTS;
-  #TILES_TO_IGNORE_FOR_AGENTS;
+  #tilesToCheckForAgents;
+  #tilesToIgnoreForAgents;
   #moveAttemptCount;
   /**
   * Map of alternative path. Id is `${tile.x}, ${tile.y}`. Value is the path or a Promise for the path.
@@ -192,8 +192,8 @@ export class GoToPlan extends PlanBase {
     this.#moveAttemptCount = 0;
     this.#alternativePath = new Map();
 
-    this.#TILES_TO_CHECK_FOR_AGENTS = agent.internalBelief.numberOfCheckedTilesForAgentPresence;
-    this.#TILES_TO_IGNORE_FOR_AGENTS = agent.internalBelief.numberOfIgnoredTilesForAgentPresence;
+    this.#tilesToCheckForAgents = agent.internalBelief.numberOfCheckedTilesForAgentPresence;
+    this.#tilesToIgnoreForAgents = agent.internalBelief.numberOfIgnoredTilesForAgentPresence;
   }
 
   /**
@@ -341,7 +341,7 @@ export class GoToPlan extends PlanBase {
    * @param {Number} startIndex 
    */
   #searchNearbyAgent(path, startIndex) {
-    for (let i = startIndex; i < startIndex + this.#TILES_TO_CHECK_FOR_AGENTS; i += 1) {
+    for (let i = startIndex; i < startIndex + this.#tilesToCheckForAgents; i += 1) {
       if (i < path.length) {
         const aheadTileCoordinates = new Coordinates(path[i].x, path[i].y);
         if (this.agent.internalBelief.isTileWithAgent(aheadTileCoordinates)) {
@@ -379,7 +379,7 @@ export class GoToPlan extends PlanBase {
 
     //Preparing list with all tiles to ignore: TILES_TO_IGNORE_FOR_AGENTS tiles of the path after the blocked tile
     const tilesToIgnoreList = [];
-    for (let i = 0; i < this.#TILES_TO_IGNORE_FOR_AGENTS; i += 1) {
+    for (let i = 0; i < this.#tilesToIgnoreForAgents; i += 1) {
 
       //Ignore selected tiles (except for the destination)
       if (i + aheadTileIndex < path.length - 1) {
@@ -426,8 +426,8 @@ export class GoToPlan extends PlanBase {
       }
 
       //Check whether parameters were changed
-      this.#TILES_TO_CHECK_FOR_AGENTS = this.agent.internalBelief.numberOfCheckedTilesForAgentPresence;
-      this.#TILES_TO_IGNORE_FOR_AGENTS = this.agent.internalBelief.numberOfIgnoredTilesForAgentPresence;
+      this.#tilesToCheckForAgents = this.agent.internalBelief.numberOfCheckedTilesForAgentPresence;
+      this.#tilesToIgnoreForAgents = this.agent.internalBelief.numberOfIgnoredTilesForAgentPresence;
 
       //Recover the supposed next step (in other words, the tile)
       let step = path[i];

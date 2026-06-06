@@ -123,6 +123,7 @@ export class LLMAgent {
       Together with the previous parameters' value, in this exactly order:
 
       - number of possible deviations to pick up a parcel (between 2 and 5)
+      - number of tiles in front of our agent to check an obstacle on the path (between 2 and 4)
       - number of tiles to ignore after an obstacle on the path (between 2 and 4)
       - delay in sending movement request to the server (between 0 and 100 ms)
       - type of function to randomize the destination (cosine for higher randomicity, hyperbola for privileging close tiles)
@@ -443,14 +444,15 @@ export class LLMAgent {
     }
 
     const numDeviation = this.#clamp(Number(values[0]), 2, 5);
-    const blocksAfterAgent = this.#clamp(Number(values[1]), 2, 4);
-    const movementDelay = this.#clamp(Number(values[2].match(/\d+/)), 0, 100);
-    const randomFunction = values[3];
-    const minScoreMultiplier = this.#clamp(Number(values[4]), 0.2, 0.6);
+    const tilesToCheckBlock = this.#clamp(Number(values[1]), 2, 4);
+    const blocksAfterAgent = this.#clamp(Number(values[2]), 2, 4);
+    const movementDelay = this.#clamp(Number(values[3].match(/\d+/)), 0, 100);
+    const randomFunction = values[4];
+    const minScoreMultiplier = this.#clamp(Number(values[5]), 0.2, 0.6);
 
     return new LLMUpdatedParameters(
       numDeviation,
-      4,
+      tilesToCheckBlock,
       blocksAfterAgent,
       movementDelay,
       randomFunction,
