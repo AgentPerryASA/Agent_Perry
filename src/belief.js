@@ -91,6 +91,9 @@ export class Beliefs {
   /**@type {string} */
   #randomFunctionType;
 
+  /**@type {Map<string,string>}*/
+  #enhancedDeliveryTilesMap;
+
   constructor() {
     this.#parcelList = [];
     this.#tileMap = new WorldMap([], [], [], []);
@@ -114,6 +117,7 @@ export class Beliefs {
     this.#numberOfIgnoredTilesForAgentPresence = 2;
     this.#numberOfPossibleDeviations = 5;
     this.#parcelMinScoreMultiplier = 0.4;
+    this.#enhancedDeliveryTilesMap = new Map();
     this.#randomFunctionType = CosineRandomFunction.TYPE;
     RandomFunction.setFunctionType(this.#randomFunctionType);
   }
@@ -176,6 +180,10 @@ export class Beliefs {
 
   get numberOfPossibleDeviations() {
     return this.#numberOfPossibleDeviations;
+  }
+
+  get enhancedDeliveryTilesMap() {
+    return this.#enhancedDeliveryTilesMap;
   }
 
   set deviateAndPickupIntentionCounter(value) {

@@ -2,6 +2,7 @@
 /** @typedef LLMIntention @type {import("../llm_intention.js").LLMIntention} */
 
 import { LLMUpdatedParameters } from "./beliefs_utils.js";
+import { Coordinates } from "./coordinates.js";
 
 export class HandshakeMessage {
   static #TYPE = "handshake";
@@ -150,6 +151,27 @@ export class LLMMapResponseMessage {
 
   static get TYPE() {
     return LLMMapResponseMessage.#TYPE;
+  }
+}
+
+export class LLMSetTileWeightMultiplierMessage {
+  static #TYPE = "llmsettileweightmultiplier";
+
+  type;
+  coordinates;
+  multiplierString;
+
+  /**
+   * @param {{coordinates: Coordinates[], multiplierString: string[]}} content
+   */
+  constructor({ coordinates, multiplierString }) {
+    this.type = LLMSetTileWeightMultiplierMessage.#TYPE;
+    this.coordinates = coordinates;
+    this.multiplierString = multiplierString;
+  }
+
+  static get TYPE() {
+    return this.#TYPE;
   }
 }
 

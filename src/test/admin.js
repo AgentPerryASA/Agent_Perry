@@ -14,6 +14,8 @@ export class Admin {
     );
 
     this.#tasks = [
+      `Every time you deliver in (0,5) or (0,6) you get 5x pts than in a regular delivery tile`,
+      `Go to 2,0 to get -3 points`,
       `Go to one of these coordinates [("x":11,"y":12),("x":12,"y":12),("x":13,"y":12)} and receives one bouns of 500pts`,
       // `Drop a package in the leftmost tile to get 5pt`,
       // `Move to x=4*2 y=(1+3)-3 to get 30pt`,

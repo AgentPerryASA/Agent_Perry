@@ -9,10 +9,11 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs } from "./belief.js";
 import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
-import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage } from './utils/message.js';
+import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage, LLMSetTileWeightMultiplierMessage } from './utils/message.js';
 import { LLMUpdatedParameters } from './utils/beliefs_utils.js';
 import { TargetTile } from './utils/path_utils.js';
 import { LLMGoPutDownIntention, LLMGoToIntention, LLMIntention } from "./llm_intention.js";
+import { calc } from './utils/llm_tools.js';
 
 export class BDIAgent {
   #socket;
@@ -179,6 +180,23 @@ export class BDIAgent {
         this.#llmIntention = new LLMGoPutDownIntention(/**@type {Coordinates}*/(message.deliveryCoordinates));
 
         break;
+      case LLMSetTileWeightMultiplierMessage.TYPE:
+
+        if (!("coordinates" in message) || !("multiplierString" in message)) {
+          return;
+        }
+
+        const intention = new LLMSetTileWeightMultiplierMessage({ coordinates: /**@type {Coordinates[]}*/(message.coordinates), multiplierString: /**@type {string[]}*/(message.multiplierString) });
+
+        for (let i = 0; i < intention.coordinates.length; i += 1) {
+          //Copy needed for correcting obtain the string equivalent to use as a key and value
+          const coordCopy = new Coordinates(intention.coordinates[i].x, intention.coordinates[i].y);
+          const multCopy = intention.multiplierString[i];
+
+          this.#internalBelief.enhancedDeliveryTilesMap.set(coordCopy.toString(), multCopy);
+        }
+
+        break;
       case LLMSetIdMessage.TYPE:
         if (!("llmAgentId" in message)) {
           return;
@@ -246,10 +264,10 @@ export class BDIAgent {
 
   #selectBestIntention() {
 
-    const NUMBER_OF_POSSIBLE_DEVIATIONS = this.internalBelief.numberOfPossibleDeviations;
+    const numberOfPossibleDeviations = this.internalBelief.numberOfPossibleDeviations;
     const goPutDownIntention = this.#getFirstInstanceOfTypeInQueue(GoPutDownIntention);
     // Check if any deviation is possible only if our main intention is to delivery
-    if (goPutDownIntention && this.#internalBelief.deviateAndPickupIntentionCounter < NUMBER_OF_POSSIBLE_DEVIATIONS) {
+    if (goPutDownIntention && this.#internalBelief.deviateAndPickupIntentionCounter < numberOfPossibleDeviations) {
 
       const gameSpeed = this.#internalBelief.gameSpeed;
       const parcelDecayTime = this.#internalBelief.parcelDecayTimerValue * 1000;
@@ -472,7 +490,15 @@ export class BDIAgent {
     let random = Math.random() * totalWeight;
 
     for (const [destinationCoordinates, weightedPath] of this.#internalBelief.currentTargetTile.pathList) {
-      random -= weightedPath.weight;
+      //If a delivery cell makes the agent gain more points (or less), this is applied to the weight
+      const multiplier = this.#internalBelief.enhancedDeliveryTilesMap.get(destinationCoordinates.toString());
+      if (multiplier) {
+        const finalWeight = calc(weightedPath.weight.toString() + multiplier);
+
+        random -= finalWeight;
+      } else {
+        random -= weightedPath.weight;
+      }
 
       if (random < 0) {
         return { destinationCoordinates: destinationCoordinates, path: weightedPath.path };
