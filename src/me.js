@@ -40,7 +40,7 @@ export class Me {
     this.#carriedParcelList = [];
     this.#mateId = "";
     this.#llmId = "";
-    this.#agentMovementDelay = 0;
+    this.#agentMovementDelay = 100;
   }
 
   get id() {

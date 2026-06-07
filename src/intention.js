@@ -231,6 +231,11 @@ export class GoPutDownIntention {
     return this.#deliveryCoordinates;
   }
 
+  set deliveryCoordinates(value) {
+    this.#deliveryCoordinates = value;
+    this.#path = undefined;
+  }
+
   get path() {
     return this.#path;
   }

@@ -156,92 +156,105 @@ export class BDIAgent {
 
     switch (message.type) {
       case HandshakeMessage.TYPE:
+        {
+          if (!("key" in message)) {
+            return;
+          }
 
-        if (!("key" in message)) {
-          return;
-        }
-
-        msg = new HandshakeMessage({ key: /**@type {string}*/(message.key) });
-        if (msg.key == process.env.HANDSHAKE_KEY) {
-          this.#internalBelief.me.mateId = id;
-          //console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`);
+          msg = new HandshakeMessage({ key: /**@type {string}*/(message.key) });
+          if (msg.key == process.env.HANDSHAKE_KEY) {
+            this.#internalBelief.me.mateId = id;
+            //console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`);
+          }
         }
         break;
       case LLMGoToIntention.TYPE:
-        if (!("destinationCoordinates" in message)) {
-          return;
+        {
+          if (!("destinationCoordinates" in message) || !("sender" in message) || !("value" in message)) {
+            return;
+          }
+
+          //Check who was the sender: if the sender was the agent which is not the one connected to the llm, this means that the message was rejected by both agent, therefore it must be discarded
+          const sender = message.sender;
+          if (sender == this.#internalBelief.me.mateId && this.#internalBelief.me.llmId == this.#internalBelief.me.id) {
+            return;
+          }
+
+          this.#llmIntention = new LLMGoToIntention(/**@type {Coordinates}*/(message.destinationCoordinates),/**@type {string}*/(message.value),/**@type {string}*/(message.sender));
         }
-        this.#llmIntention = new LLMGoToIntention(/**@type {Coordinates}*/(message.destinationCoordinates));
         break;
       case LLMGoPutDownIntention.TYPE:
-        if (!("deliveryCoordinates" in message)) {
-          return;
-        }
-        this.#llmIntention = new LLMGoPutDownIntention(/**@type {Coordinates}*/(message.deliveryCoordinates));
+        {
+          if (!("deliveryCoordinates" in message) || !("sender" in message) || !("value" in message)) {
+            return;
+          }
 
+          //Check who was the sender: if the sender was the agent which is not the one connected to the llm, this means that the message was rejected by both agent, therefore it must be discarded
+          const sender = message.sender;
+          if (sender == this.#internalBelief.me.mateId && this.#internalBelief.me.llmId == this.#internalBelief.me.id) {
+            return;
+          }
+
+          this.#llmIntention = new LLMGoPutDownIntention(/**@type {Coordinates}*/(message.deliveryCoordinates),/**@type {string}*/(message.value),/**@type {string}*/(message.sender));
+          this.#reviseGoPutDownIntention();
+        }
         break;
       case LLMSetTileWeightMultiplierMessage.TYPE:
+        {
+          if (!("coordinates" in message) || !("multiplierString" in message)) {
+            return;
+          }
 
-        if (!("coordinates" in message) || !("multiplierString" in message)) {
-          return;
+          const intention = new LLMSetTileWeightMultiplierMessage({ coordinates: /**@type {Coordinates[]}*/(message.coordinates), multiplierString: /**@type {string[]}*/(message.multiplierString) });
+
+          for (let i = 0; i < intention.coordinates.length; i += 1) {
+            //Copy needed for correcting obtain the string equivalent to use as a key and value
+            const coordCopy = new Coordinates(intention.coordinates[i].x, intention.coordinates[i].y);
+            const multCopy = intention.multiplierString[i];
+
+            this.#internalBelief.enhancedDeliveryTilesMap.set(coordCopy.toString(), multCopy);
+          }
         }
-
-        const intention = new LLMSetTileWeightMultiplierMessage({ coordinates: /**@type {Coordinates[]}*/(message.coordinates), multiplierString: /**@type {string[]}*/(message.multiplierString) });
-
-        for (let i = 0; i < intention.coordinates.length; i += 1) {
-          //Copy needed for correcting obtain the string equivalent to use as a key and value
-          const coordCopy = new Coordinates(intention.coordinates[i].x, intention.coordinates[i].y);
-          const multCopy = intention.multiplierString[i];
-
-          this.#internalBelief.enhancedDeliveryTilesMap.set(coordCopy.toString(), multCopy);
-        }
-
         break;
       case LLMSetIdMessage.TYPE:
-        if (!("llmAgentId" in message)) {
-          return;
+        {
+          if (!("llmAgentId" in message)) {
+            return;
+          }
+
+          const messageId = /**@type {string} */(message.llmAgentId);
+          this.#internalBelief.me.llmId = messageId;
         }
-
-        const messageId = /**@type {string} */(message.llmAgentId);
-        this.#internalBelief.me.llmId = messageId;
-
         break;
       case LLMParametersTuningResponseMessage.TYPE:
-        if (!("updatedParameters" in message)) {
-          return;
+        {
+          if (!("updatedParameters" in message)) {
+            return;
+          }
+
+          const updatedParameters = /**@type {LLMUpdatedParameters}*/(message.updatedParameters);
+
+          this.internalBelief.updateParameters(updatedParameters);
+
+          this.#wasRequestForTuningSent = false;
         }
-
-        const updatedParameters = /**@type {LLMUpdatedParameters}*/(message.updatedParameters);
-
-        this.internalBelief.updateParameters(updatedParameters);
-
-        this.#wasRequestForTuningSent = false;
-
         break;
       case LLMMapRequestMessage.TYPE:
-        const response = new LLMMapResponseMessage(this.#internalBelief.tileMap.tiles);
-        reply(response);
+        {
+          const response = new LLMMapResponseMessage(this.#internalBelief.tileMap.tiles);
+          reply(response);
+        }
         break;
       default:
-        msg = String(message);
+        {
+          msg = String(message);
+        }
         break;
     }
   }
 
   /**
-   * @param {Message} message 
-   */
-  #sendToLLM(message) {
-    this.#socket.emitSay(
-      // NOTE: The BDI agent is not programmed to receive messages from itself,
-      // so this will be received only by the LLM if associated to this agent
-      this.#internalBelief.me.id,
-      message
-    );
-  }
-
-  /**
-   * @param {Message} message 
+   * @param {Message | LLMIntention} message 
    */
   #sendToMate(message) {
     this.#socket.emitSay(
@@ -255,7 +268,7 @@ export class BDIAgent {
     /**
      * @type {LLMIntention | Intention | undefined}
      */
-    let bestIntention = this.#llmIntention ? this.#llmIntention : this.#selectBestIntention();
+    let bestIntention = this.#selectBestIntention();
 
     if (bestIntention) {
       await this.#pushIntention(bestIntention);
@@ -263,6 +276,32 @@ export class BDIAgent {
   }
 
   #selectBestIntention() {
+
+    const MAX_DISTANCE_LLM_GO_TO_DEVIATION = 3;
+
+    //First check if a LLMGoToIntention is convenient or not. If necessary, send it to the other agent. This intention is convenient if the distance from the current position is < MAX_DISTANCE_LLM_GO_TO_DEVIATION or if the reward is higher than the current value of carried parcels
+    if (this.#llmIntention && LLMGoToIntention.isTypeOf(this.#llmIntention)) {
+      const distance = this.#internalBelief.pathFinder?.search(this.#internalBelief.me.coordinates, this.#llmIntention.destinationCoordinates);
+
+      let valueOfCarriedParcels = 0;
+
+      for (const [_, parcel] of this.#internalBelief.carriedParcelsMap) {
+        if (parcel) {
+          valueOfCarriedParcels += parcel.reward;
+        }
+      }
+
+      if (distance && (distance.length < MAX_DISTANCE_LLM_GO_TO_DEVIATION || valueOfCarriedParcels < Number(this.#llmIntention.value))) {
+        return this.#llmIntention;
+      } else if (this.#llmIntention) {
+        //Send to mate and clear the LLMintention
+        this.#llmIntention.sender = this.#internalBelief.me.id;
+        this.#sendToMate(this.#llmIntention);
+        this.#llmIntention = undefined;
+      }
+
+    }
+
 
     const numberOfPossibleDeviations = this.internalBelief.numberOfPossibleDeviations;
     const goPutDownIntention = this.#getFirstInstanceOfTypeInQueue(GoPutDownIntention);
@@ -372,6 +411,57 @@ export class BDIAgent {
     return new GoToIntention(green.coordinates);
   }
 
+  async #reviseGoPutDownIntention() {
+    //If a GoPutDownIntention was present in the queue and the new intention is a LLMGoPutDown replace the previous one instead of pushing a new one. In this particular situation, a push is not needed
+
+    const goPutDownIntentionInQueueIndex = this.#getIndexOfFirstInstanceOfTypeInQueue(GoPutDownIntention);
+
+    if (goPutDownIntentionInQueueIndex != undefined && this.#llmIntention && LLMGoPutDownIntention.isTypeOf(this.#llmIntention)) {
+
+      const goPutDownIntentionReference = /**@type {GoPutDownIntention}*/(this.#intentionPlanQueue[goPutDownIntentionInQueueIndex].intention);
+      let valueOfCarriedParcels = 0;
+
+      for (const [_, parcel] of this.#internalBelief.carriedParcelsMap) {
+        if (parcel) {
+          valueOfCarriedParcels += parcel.reward;
+        }
+      }
+
+      if (valueOfCarriedParcels < calc(valueOfCarriedParcels + this.#llmIntention.value)) {
+        //Create replacement plan and intention, but only if perry will gain more point that the one it will get by delivering parcels normally
+
+        goPutDownIntentionReference.deliveryCoordinates = this.#llmIntention.deliveryCoordinates;
+
+        //Check if the plan was executing, if so stop it, pop the plan and push the intention like it was a new one
+        if (this.#currentPlan && GoPutDownPlan.isTypeOf(this.#currentPlan) && this.#currentPlan.isRunning) {
+
+          await this.#stopCurrentIntention();
+          this.#intentionPlanQueue.pop();
+          this.#pushIntention(new GoPutDownIntention(this.#llmIntention.deliveryCoordinates, undefined));
+        }
+
+        this.#llmIntention = undefined;
+
+      } else {
+        //If not convenient, send to the other agent
+
+        this.#llmIntention.sender = this.#internalBelief.me.id;
+        this.#sendToMate(this.#llmIntention);
+        this.#llmIntention = undefined;
+      }
+
+      return;
+
+    } else if (this.#internalBelief.carriedParcelsCount == 0 && this.#llmIntention && LLMGoPutDownIntention.isTypeOf(this.#llmIntention)) {
+      //If no put down are currently be performed, send to the other agent
+      this.#llmIntention.sender = this.#internalBelief.me.id;
+      this.#sendToMate(this.#llmIntention);
+      this.#llmIntention = undefined;
+
+      return;
+    }
+  }
+
   /**
    * @param {Intention | LLMIntention} intention 
    */
@@ -399,23 +489,7 @@ export class BDIAgent {
       this.#intentionPlanQueue.pop();
     }
 
-    //If a GoPutDownIntention was present in the queue and the new intention is a LLMGoPutDown replace the previous one instead of pushing a new one. In this particular situation, a push is not needed
-
-    const goPutDownIntentionInQueueIndex = this.#getIndexOfFirstInstanceOfTypeInQueue(GoPutDownIntention);
-
-    if (goPutDownIntentionInQueueIndex && this.#llmIntention && LLMGoPutDownIntention.isTypeOf(this.#llmIntention)) {
-      //Create replacement plan and intention
-      const intentionReplacement = new GoPutDownIntention(this.#llmIntention.deliveryCoordinates, undefined);
-
-      this.#intentionPlanQueue[goPutDownIntentionInQueueIndex] = { intention: intentionReplacement, plan: plan };
-
-      this.#llmIntention = undefined;
-
-      return;
-    }
-
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
-
 
     if (LLMIntention.isTypeOf(intention)) {
       //Now that the intention is about to be executed, free the received llmintention

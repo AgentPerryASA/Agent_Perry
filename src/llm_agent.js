@@ -89,13 +89,15 @@ export class LLMAgent {
       - ${LLMGoToIntention.TYPE}: tell the agent to go to a specific tile. Use this tool also if the question ask to pick up a parcel. Requires coordinates in the following format, containing:
 
         destinationX: <x coordinate> destinationY: <y coordinate>
+        value: <how much point the agent will get if it decide to go to the cell>
 
-        Coordinates must be a positive integer number. This tool MUST be used if the question was to get a parcel from some tile or to simply move to another place.
+        Coordinates must be a positive integer number. This tool MUST be used if the question was to get a parcel from some tile or to simply move to another place but should be ignored if the revenue is negative.
       - ${LLMGoPutDownIntention.TYPE}: tell the agent to drop a parcel in a specific tile. Do not use this tool for any other reason. Requires coordinates in the following format, containing:
 
         destinationX: <x coordinate> destinationY: <y coordinate>
+        value: <how much point the agent will additionally get if it decide to go to the cell. must be an expression starting with a mathematical symbol>
 
-        Coordinates must be a positive integer number. This tool MUST be used if the question was to drop a parcel in some tile.
+        Coordinates must be a positive integer number. This tool MUST be used if the question was to drop a parcel in some tile but should be ignored if the revenue is negative.
       - ${LLMSetTileWeightMultiplierMessage.TYPE}: modify delivery tiles weight. Sometimes some delivery tile makes the agent acquire some points. If that is the case, this action can be used to modify the tile value weight so it will loose or acquire priority. If a tile make the delivery worse, still use this action to advise the agent. Weight should be set according to the request but, since you don't know the current weight of a certain tile, it has to be express in a formula (like *0.3 or *2 or +1 or -3 and so on, these are just example, you need to respect what the request says, but consider that the weight are > 0 and < 1, since what you set as multiplier expression can have the opposite result). Input are the coordinates of the affected tiles and the modifier in this format:
 
         coordinates: (<x coordinate>:<y coordinate>), (<x coordinate>:<y coordinate>), and so on for all the affected tiles
@@ -190,6 +192,16 @@ export class LLMAgent {
   }
 
   /**
+   * 
+   * @param {string} actionInput 
+   */
+  #extractValue(actionInput) {
+    const match = actionInput.match(/value:\s*([+\-*/]?\d+)/);
+    return match ? match[1] : null;
+  }
+
+
+  /**
    * @param {string} id 
    * @param {string} name 
    * @param {{}} message
@@ -207,43 +219,58 @@ export class LLMAgent {
 
         switch (parsedAction.action) {
           case LLMGoToIntention.TYPE:
-            const extrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
+            {
 
-            if (extrCoord) {
-              const coordinates = new Coordinates(extrCoord[0], extrCoord[1]);
-              const intention = new LLMGoToIntention(coordinates);
-              this.#sendToAgent(intention);
+              const extrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
+              const value = this.#extractValue(parsedAction.actionInput);
+
+              if (extrCoord && value) {
+                const coordinates = new Coordinates(extrCoord[0], extrCoord[1]);
+                const intention = new LLMGoToIntention(coordinates, value, "llm" + this.#id);
+                this.#sendToAgent(intention);
+              }
             }
             break;
           case LLMGoPutDownIntention.TYPE:
-            const pdExtrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
-            if (pdExtrCoord) {
-              const coordinates = new Coordinates(pdExtrCoord[0], pdExtrCoord[1]);
-              const intention = new LLMGoPutDownIntention(coordinates);
-              this.#sendToAgent(intention);
+            {
+
+              const extrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
+              const value = this.#extractValue(parsedAction.actionInput);
+
+              if (extrCoord && value) {
+                const coordinates = new Coordinates(extrCoord[0], extrCoord[1]);
+                const intention = new LLMGoPutDownIntention(coordinates, value, "llm" + this.#id);
+
+                this.#sendToAgent(intention);
+              }
             }
             break;
           case LLMSetTileWeightMultiplierMessage.TYPE:
+            {
 
-            const coordinatesListInString = this.#recoverListOfCoordinatesFromActionInput(parsedAction.actionInput);
+              const coordinatesListInString = this.#recoverListOfCoordinatesFromActionInput(parsedAction.actionInput);
+              const multiplierListInString = this.#recoverListOfMultipliersFromActionInput(parsedAction.actionInput);
 
-            const multiplierListInString = this.#recoverListOfMultipliersFromActionInput(parsedAction.actionInput);
-
-            const coordinatesList = [];
-            if (coordinatesListInString && multiplierListInString) {
-              for (const [x, y] of coordinatesListInString) {
-                coordinatesList.push(new Coordinates(x, y));
+              const coordinatesList = [];
+              if (coordinatesListInString && multiplierListInString) {
+                for (const [x, y] of coordinatesListInString) {
+                  coordinatesList.push(new Coordinates(x, y));
+                }
+                const modifierMessage = new LLMSetTileWeightMultiplierMessage({ coordinates: coordinatesList, multiplierString: multiplierListInString });
+                this.#sendToAgent(modifierMessage);
+                this.#sendToAgent(modifierMessage, this.#mateId);
               }
-              const modifierMessage = new LLMSetTileWeightMultiplierMessage({ coordinates: coordinatesList, multiplierString: multiplierListInString });
-              this.#sendToAgent(modifierMessage);
-              this.#sendToAgent(modifierMessage, this.#mateId);
             }
             break;
           case "directAnswer":
-            this.#socket.emitShout(parsedAction.actionInput);
+            {
+              this.#socket.emitShout(parsedAction.actionInput);
+            }
             break;
           default:
-            console.log("RESULT DEFAULT: ", parsedAction.actionInput);
+            {
+              console.log("RESULT DEFAULT: ", parsedAction.actionInput);
+            }
             return;
         }
 

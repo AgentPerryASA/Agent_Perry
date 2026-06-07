@@ -23,8 +23,8 @@ export class Beliefs {
   /**@type {WorldMap} */
   #tileMap;
 
-  /**@type {number} */
-  #carriedParcelsCount;
+  /**@type {Map<string,IOParcel | undefined>}*/
+  #carriedParcelsMap;
 
   /**@type {number} */
   #parcelAvgScore;
@@ -97,7 +97,7 @@ export class Beliefs {
   constructor() {
     this.#parcelList = [];
     this.#tileMap = new WorldMap([], [], [], []);
-    this.#carriedParcelsCount = 0;
+    this.#carriedParcelsMap = new Map();
     this.#parcelAvgScore = 0;
     this.#parcelVarScore = 0;
     this.#parcelMinScore = 0;
@@ -135,7 +135,11 @@ export class Beliefs {
   }
 
   get carriedParcelsCount() {
-    return this.#carriedParcelsCount;
+    return this.#carriedParcelsMap.size;
+  }
+
+  get carriedParcelsMap() {
+    return this.#carriedParcelsMap;
   }
 
   get parcelList() {
@@ -188,10 +192,6 @@ export class Beliefs {
 
   set deviateAndPickupIntentionCounter(value) {
     this.#deviateAndPickupIntentionCounter = value;
-  }
-
-  set carriedParcelsCount(value) {
-    this.#carriedParcelsCount = value;
   }
 
   set currentTargetTile(tile) {
@@ -268,6 +268,11 @@ export class Beliefs {
         // If the current parcel was in the sensed list, then update value with that.
         // A check to see if it is now carried is necessary, as well as a check to see whether
         // the parcel is still good to be picked up (>= min value).
+        if (currentParcelFromSensedList.carriedBy == this.me.id) {
+          //If the sensed parcel is carried by perry, update the carriedParcelsMap
+          this.#carriedParcelsMap.set(currentParcelFromSensedList.id, currentParcelFromSensedList);
+        }
+
         if (
           currentParcelFromSensedList.carriedBy == undefined &&
           currentParcelFromSensedList.reward >= this.#parcelMinScore
