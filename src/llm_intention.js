@@ -39,14 +39,6 @@ export class LLMGoPutDownIntention extends LLMIntention {
   }
 
   /**
-   * @param {string} Input 
-   */
-  static parseInput(Input) {
-    // TODO: from (x, y) to Coordinates(x, y)
-    return new Coordinates(0, 0);
-  }
-
-  /**
    * @param {LLMIntention | Intention} intention
    */
   isEqual(intention) {
@@ -83,14 +75,6 @@ export class LLMGoToIntention extends LLMIntention {
   }
 
   /**
-   * @param {string} Input 
-   */
-  static parseInput(Input) {
-    // TODO: from (x, y) to Coordinates(x, y)
-    return new Coordinates(0, 0);
-  }
-
-  /**
    * @param {LLMIntention | Intention} intention
    */
   isEqual(intention) {
@@ -111,27 +95,22 @@ export class LLMGreenRedLightIntention extends LLMIntention {
   static #TYPE = "greenRedLight";
 
   type;
+  destination;
   destinationCoordinates;
 
   /**
-   * @param {Coordinates} destinationCoordinates 
+   * @param {{parity: string, type:string}} destination 
+   * @param {Coordinates | undefined} destinationCoordinates 
    */
-  constructor(destinationCoordinates) {
+  constructor(destination, destinationCoordinates = undefined) {
     super();
     this.type = LLMGreenRedLightIntention.#TYPE;
+    this.destination = destination;
     this.destinationCoordinates = destinationCoordinates;
   }
 
   static get TYPE() {
     return this.#TYPE;
-  }
-
-  /**
-   * @param {string} Input 
-   */
-  static parseInput(Input) {
-    // TODO: from (x, y) to Coordinates(x, y)
-    return new Coordinates(0, 0);
   }
 
   /**

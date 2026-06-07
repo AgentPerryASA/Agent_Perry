@@ -12,7 +12,7 @@ import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
 import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage, LLMSetTileWeightMultiplierMessage } from './utils/message.js';
 import { LLMUpdatedParameters } from './utils/beliefs_utils.js';
 import { TargetTile } from './utils/path_utils.js';
-import { LLMGoPutDownIntention, LLMGoToIntention, LLMIntention } from "./llm_intention.js";
+import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
 import { calc } from './utils/llm_tools.js';
 
 export class BDIAgent {
@@ -156,7 +156,6 @@ export class BDIAgent {
 
     switch (message.type) {
       case HandshakeMessage.TYPE:
-
         if (!("key" in message)) {
           return;
         }
@@ -164,7 +163,6 @@ export class BDIAgent {
         msg = new HandshakeMessage({ key: /**@type {string}*/(message.key) });
         if (msg.key == process.env.HANDSHAKE_KEY) {
           this.#internalBelief.me.mateId = id;
-          //console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`);
         }
         break;
       case LLMGoToIntention.TYPE:
@@ -180,8 +178,14 @@ export class BDIAgent {
         this.#llmIntention = new LLMGoPutDownIntention(/**@type {Coordinates}*/(message.deliveryCoordinates));
 
         break;
-      case LLMSetTileWeightMultiplierMessage.TYPE:
+      case LLMGreenRedLightIntention.TYPE:
+        if (!("destinationCoordinates" in message) || !("destination" in message)) {
+          return;
+        }
+        this.#llmIntention = new LLMGreenRedLightIntention(/**@type {{parity:String, type:string}}*/(message.destination), /**@type {Coordinates}*/(message.destinationCoordinates));
 
+        break;
+      case LLMSetTileWeightMultiplierMessage.TYPE:
         if (!("coordinates" in message) || !("multiplierString" in message)) {
           return;
         }
@@ -252,9 +256,7 @@ export class BDIAgent {
 
   async #generateBestIntention() {
     //LLM intention always have priority
-    /**
-     * @type {LLMIntention | Intention | undefined}
-     */
+    /** @type {LLMIntention | Intention | undefined} */
     let bestIntention = this.#llmIntention ? this.#llmIntention : this.#selectBestIntention();
 
     if (bestIntention) {
@@ -263,12 +265,10 @@ export class BDIAgent {
   }
 
   #selectBestIntention() {
-
     const numberOfPossibleDeviations = this.internalBelief.numberOfPossibleDeviations;
     const goPutDownIntention = this.#getFirstInstanceOfTypeInQueue(GoPutDownIntention);
     // Check if any deviation is possible only if our main intention is to delivery
     if (goPutDownIntention && this.#internalBelief.deviateAndPickupIntentionCounter < numberOfPossibleDeviations) {
-
       const gameSpeed = this.#internalBelief.gameSpeed;
       const parcelDecayTime = this.#internalBelief.parcelDecayTimerValue * 1000;
 

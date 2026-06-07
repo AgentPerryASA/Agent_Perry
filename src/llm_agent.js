@@ -4,7 +4,7 @@ import "dotenv/config";
 import OpenAI from "openai";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk";
 import { LLMIntentionMessage, BDIResponseMessage, HandshakeMessage, LLMParametersTuningRequestMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMSetTileWeightMultiplierMessage } from "./utils/message.js";
-import { LLMGoPutDownIntention, LLMGoToIntention } from "./llm_intention.js";
+import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention } from "./llm_intention.js";
 import { LLMUpdatedParameters } from "./utils/beliefs_utils.js";
 import { calc, findExtremePosition, getLatLong, getTemp, webSearch } from "./utils/llm_tools.js";
 import { Coordinates } from "./utils/coordinates.js";
@@ -91,15 +91,23 @@ export class LLMAgent {
         destinationX: <x coordinate> destinationY: <y coordinate>
 
         Coordinates must be a positive integer number. This tool MUST be used if the question was to get a parcel from some tile or to simply move to another place.
+
       - ${LLMGoPutDownIntention.TYPE}: tell the agent to drop a parcel in a specific tile. Do not use this tool for any other reason. Requires coordinates in the following format, containing:
 
         destinationX: <x coordinate> destinationY: <y coordinate>
 
         Coordinates must be a positive integer number. This tool MUST be used if the question was to drop a parcel in some tile.
+
       - ${LLMSetTileWeightMultiplierMessage.TYPE}: modify delivery tiles weight. Sometimes some delivery tile makes the agent acquire some points. If that is the case, this action can be used to modify the tile value weight so it will loose or acquire priority. If a tile make the delivery worse, still use this action to advise the agent. Weight should be set according to the request but, since you don't know the current weight of a certain tile, it has to be express in a formula (like *0.3 or *2 or +1 or -3 and so on, these are just example, you need to respect what the request says, but consider that the weight are > 0 and < 1, since what you set as multiplier expression can have the opposite result). Input are the coordinates of the affected tiles and the modifier in this format:
 
         coordinates: (<x coordinate>:<y coordinate>), (<x coordinate>:<y coordinate>), and so on for all the affected tiles
         multiplierString: (<modifier expression for the first tile>), (<modifier expression for the second tile>), and so on for all the affected tiles
+
+      - ${LLMGreenRedLightIntention.TYPE}: tell the agent to go to either a specific tile or a set of tiles, and he has to wait for further instructions (e.g. "move to an odd-numbered row and wait for our message before moving again"). If a specific coordinate is provided, return it in the format:
+
+        destinationX: <x coordinate> destinationY: <y coordinate>
+
+        otherwise, return where to move in a very brief comment, just the destination.
 
       - directAnswer: make the agent say a certain phrase; Input is the phrase. Don't use this tool unless the question is asking to say some sort of information without involving any other action. Example: requiring to drop or get a parcel is not something suitable for this tool. If the question asked to go to a certain tile this action is not suitable.
 
@@ -150,7 +158,6 @@ export class LLMAgent {
   }
 
   /**
-   * 
    * @param {string} actionInput 
    */
   #recoverCoordinatesFromActionInput(actionInput) {
@@ -161,8 +168,29 @@ export class LLMAgent {
       const destinationX = Number(match[1]);
       const destinationY = Number(match[2]);
       return [destinationX, destinationY];
-    } else {
-      return undefined;
+    }
+  }
+
+  /**
+   * @param {string} actionInput 
+   */
+  #recoverDestinationForGreenRedLight(actionInput) {
+    let parity;
+    let type;
+
+    let match = actionInput.match(/odd|even/);
+    if (match) {
+      parity = match[0];
+    }
+    match = actionInput.match(/row|column/);
+    if (match) {
+      type = match[0]
+    }
+
+    if (parity && type) {
+      return {
+        parity: parity, type: type
+      };
     }
   }
 
@@ -200,44 +228,66 @@ export class LLMAgent {
       const msg = String(message);
 
       const parsedAction = await this.#onActionReceived(msg);
+      console.log(parsedAction)
 
       if (parsedAction) {
-        let msg;
-        let intention;
-
         switch (parsedAction.action) {
           case LLMGoToIntention.TYPE:
-            const extrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
+            {
+              const extrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
 
-            if (extrCoord) {
-              const coordinates = new Coordinates(extrCoord[0], extrCoord[1]);
-              const intention = new LLMGoToIntention(coordinates);
-              this.#sendToAgent(intention);
+              if (extrCoord) {
+                const coordinates = new Coordinates(extrCoord[0], extrCoord[1]);
+                const intention = new LLMGoToIntention(coordinates);
+                this.#sendToAgent(intention);
+              }
             }
             break;
           case LLMGoPutDownIntention.TYPE:
-            const pdExtrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
-            if (pdExtrCoord) {
-              const coordinates = new Coordinates(pdExtrCoord[0], pdExtrCoord[1]);
-              const intention = new LLMGoPutDownIntention(coordinates);
-              this.#sendToAgent(intention);
+            {
+              const pdExtrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
+
+              if (pdExtrCoord) {
+                const coordinates = new Coordinates(pdExtrCoord[0], pdExtrCoord[1]);
+                const intention = new LLMGoPutDownIntention(coordinates);
+                this.#sendToAgent(intention);
+              }
             }
             break;
           case LLMSetTileWeightMultiplierMessage.TYPE:
+            {
+              const coordinatesListInString = this.#recoverListOfCoordinatesFromActionInput(parsedAction.actionInput);
+              const multiplierListInString = this.#recoverListOfMultipliersFromActionInput(parsedAction.actionInput);
 
-            const coordinatesListInString = this.#recoverListOfCoordinatesFromActionInput(parsedAction.actionInput);
-
-            const multiplierListInString = this.#recoverListOfMultipliersFromActionInput(parsedAction.actionInput);
-
-            const coordinatesList = [];
-            if (coordinatesListInString && multiplierListInString) {
-              for (const [x, y] of coordinatesListInString) {
-                coordinatesList.push(new Coordinates(x, y));
+              const coordinatesList = [];
+              if (coordinatesListInString && multiplierListInString) {
+                for (const [x, y] of coordinatesListInString) {
+                  coordinatesList.push(new Coordinates(x, y));
+                }
+                const modifierMessage = new LLMSetTileWeightMultiplierMessage({ coordinates: coordinatesList, multiplierString: multiplierListInString });
+                this.#sendToAgent(modifierMessage);
+                this.#sendToAgent(modifierMessage, this.#mateId);
               }
-              const modifierMessage = new LLMSetTileWeightMultiplierMessage({ coordinates: coordinatesList, multiplierString: multiplierListInString });
-              this.#sendToAgent(modifierMessage);
-              this.#sendToAgent(modifierMessage, this.#mateId);
             }
+            break;
+          case LLMGreenRedLightIntention.TYPE:
+            {
+              const extrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
+
+              if (extrCoord) {
+                const coordinates = new Coordinates(extrCoord[0], extrCoord[1]);
+                const intention = new LLMGreenRedLightIntention({ parity: "", type: "" }, coordinates);
+                this.#sendToAgent(intention);
+              } else {
+                const destination = this.#recoverDestinationForGreenRedLight(parsedAction.actionInput);
+
+                if (destination) {
+                  const intention = new LLMGreenRedLightIntention(destination);
+                  this.#sendToAgent(intention);
+                }
+              }
+            }
+
             break;
           case "directAnswer":
             this.#socket.emitShout(parsedAction.actionInput);
@@ -245,11 +295,6 @@ export class LLMAgent {
           default:
             console.log("RESULT DEFAULT: ", parsedAction.actionInput);
             return;
-        }
-
-        if (intention) {
-          msg = new LLMIntentionMessage({ intention: intention });
-          this.#sendToAgent(msg);
         }
       }
 
@@ -447,7 +492,6 @@ export class LLMAgent {
       if (wasFinalAnswer) {
         //Clear the message list
         this.#actionMessages.splice(1, this.#actionMessages.length);
-        //console.log("END:", latestAnswer);
         return res;
       }
 
