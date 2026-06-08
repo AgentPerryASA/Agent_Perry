@@ -12,7 +12,7 @@ import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
 import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage, LLMSetTileWeightMultiplierMessage } from './utils/message.js';
 import { LLMUpdatedParameters } from './utils/beliefs_utils.js';
 import { TargetTile } from './utils/path_utils.js';
-import { LLMGoPutDownIntention, LLMGoToIntention, LLMIntention } from "./llm_intention.js";
+import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
 import { calc } from './utils/llm_tools.js';
 
 export class BDIAgent {
@@ -164,7 +164,6 @@ export class BDIAgent {
           msg = new HandshakeMessage({ key: /**@type {string}*/(message.key) });
           if (msg.key == process.env.HANDSHAKE_KEY) {
             this.#internalBelief.me.mateId = id;
-            //console.log(`${this.#internalBelief.me.name} (${this.#internalBelief.me.id}) received handshake from ${name}`);
           }
         }
         break;
@@ -197,6 +196,14 @@ export class BDIAgent {
 
           this.#llmIntention = new LLMGoPutDownIntention(/**@type {Coordinates}*/(message.deliveryCoordinates),/**@type {string}*/(message.value),/**@type {string}*/(message.sender));
           this.#reviseGoPutDownIntention();
+        }
+        break;
+      case LLMGreenRedLightIntention.TYPE:
+        {
+          if (!("destinationCoordinates" in message) || !("destination" in message) || !("sender" in message)) {
+            return;
+          }
+          this.#llmIntention = new LLMGreenRedLightIntention(/**@type {{parity:String, type:string}}*/(message.destination), /**@type {Coordinates}*/(message.destinationCoordinates),/**@type {string}*/(message.sender));
         }
         break;
       case LLMSetTileWeightMultiplierMessage.TYPE:
@@ -268,7 +275,7 @@ export class BDIAgent {
     /**
      * @type {LLMIntention | Intention | undefined}
      */
-    let bestIntention = this.#selectBestIntention();
+    let bestIntention = this.#llmIntention ? this.#llmIntention : this.#selectBestIntention();
 
     if (bestIntention) {
       await this.#pushIntention(bestIntention);
@@ -277,37 +284,10 @@ export class BDIAgent {
 
   #selectBestIntention() {
 
-    const MAX_DISTANCE_LLM_GO_TO_DEVIATION = 3;
-
-    //First check if a LLMGoToIntention is convenient or not. If necessary, send it to the other agent. This intention is convenient if the distance from the current position is < MAX_DISTANCE_LLM_GO_TO_DEVIATION or if the reward is higher than the current value of carried parcels
-    if (this.#llmIntention && LLMGoToIntention.isTypeOf(this.#llmIntention)) {
-      const distance = this.#internalBelief.pathFinder?.search(this.#internalBelief.me.coordinates, this.#llmIntention.destinationCoordinates);
-
-      let valueOfCarriedParcels = 0;
-
-      for (const [_, parcel] of this.#internalBelief.carriedParcelsMap) {
-        if (parcel) {
-          valueOfCarriedParcels += parcel.reward;
-        }
-      }
-
-      if (distance && (distance.length < MAX_DISTANCE_LLM_GO_TO_DEVIATION || valueOfCarriedParcels < Number(this.#llmIntention.value))) {
-        return this.#llmIntention;
-      } else if (this.#llmIntention) {
-        //Send to mate and clear the LLMintention
-        this.#llmIntention.sender = this.#internalBelief.me.id;
-        this.#sendToMate(this.#llmIntention);
-        this.#llmIntention = undefined;
-      }
-
-    }
-
-
     const numberOfPossibleDeviations = this.internalBelief.numberOfPossibleDeviations;
     const goPutDownIntention = this.#getFirstInstanceOfTypeInQueue(GoPutDownIntention);
     // Check if any deviation is possible only if our main intention is to delivery
     if (goPutDownIntention && this.#internalBelief.deviateAndPickupIntentionCounter < numberOfPossibleDeviations) {
-
       const gameSpeed = this.#internalBelief.gameSpeed;
       const parcelDecayTime = this.#internalBelief.parcelDecayTimerValue * 1000;
 

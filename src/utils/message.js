@@ -128,7 +128,7 @@ export class LLMMapRequestMessage {
   }
 
   static get TYPE() {
-    return LLMMapRequestMessage.#TYPE;
+    return this.#TYPE;
   }
 }
 
@@ -148,9 +148,8 @@ export class LLMMapResponseMessage {
     this.type = LLMMapResponseMessage.#TYPE;
   }
 
-
   static get TYPE() {
-    return LLMMapResponseMessage.#TYPE;
+    return this.#TYPE;
   }
 }
 

@@ -110,15 +110,18 @@ export class LLMGreenRedLightIntention extends LLMIntention {
   static #TYPE = "greenRedLight";
 
   type;
+  destination;
   destinationCoordinates;
 
   /**
-   * @param {Coordinates} destinationCoordinates 
+   * @param {{parity: string, type:string}} destination 
+   * @param {Coordinates | undefined} destinationCoordinates 
    * @param {string} sender
    */
-  constructor(destinationCoordinates, sender) {
+  constructor(destination, destinationCoordinates, sender) {
     super(sender);
     this.type = LLMGreenRedLightIntention.#TYPE;
+    this.destination = destination;
     this.destinationCoordinates = destinationCoordinates;
   }
 
