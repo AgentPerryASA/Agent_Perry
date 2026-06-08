@@ -275,7 +275,7 @@ export class BDIAgent {
     /**
      * @type {LLMIntention | Intention | undefined}
      */
-    let bestIntention = this.#llmIntention ? this.#llmIntention : this.#selectBestIntention();
+    let bestIntention = this.#selectBestIntention();
 
     if (bestIntention) {
       await this.#pushIntention(bestIntention);
@@ -283,6 +283,31 @@ export class BDIAgent {
   }
 
   #selectBestIntention() {
+
+    const MAX_DISTANCE_LLM_GO_TO_DEVIATION = 3;
+
+    //First check if a LLMGoToIntention is convenient or not. If necessary, send it to the other agent. This intention is convenient if the distance from the current position is < MAX_DISTANCE_LLM_GO_TO_DEVIATION or if the reward is higher than the current value of carried parcels
+    if (this.#llmIntention && LLMGoToIntention.isTypeOf(this.#llmIntention)) {
+      const distance = this.#internalBelief.pathFinder?.search(this.#internalBelief.me.coordinates, this.#llmIntention.destinationCoordinates);
+
+      let valueOfCarriedParcels = 0;
+
+      for (const [_, parcel] of this.#internalBelief.carriedParcelsMap) {
+        if (parcel) {
+          valueOfCarriedParcels += parcel.reward;
+        }
+      }
+
+      if (distance && (distance.length < MAX_DISTANCE_LLM_GO_TO_DEVIATION || valueOfCarriedParcels < Number(this.#llmIntention.value))) {
+        return this.#llmIntention;
+      } else if (this.#llmIntention) {
+        //Send to mate and clear the LLMintention
+        this.#llmIntention.sender = this.#internalBelief.me.id;
+        this.#sendToMate(this.#llmIntention);
+        this.#llmIntention = undefined;
+      }
+
+    }
 
     const numberOfPossibleDeviations = this.internalBelief.numberOfPossibleDeviations;
     const goPutDownIntention = this.#getFirstInstanceOfTypeInQueue(GoPutDownIntention);
