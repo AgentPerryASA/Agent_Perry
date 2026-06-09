@@ -179,7 +179,11 @@ export class BDIAgent {
             return;
           }
 
-          this.#llmIntention = new LLMGoToIntention(/**@type {Coordinates}*/(message.destinationCoordinates),/**@type {string}*/(message.value),/**@type {string}*/(message.sender));
+          this.#llmIntention = new LLMGoToIntention(
+            /**@type {Coordinates}*/(message.destinationCoordinates),
+            /**@type {string}*/(message.value),
+            /**@type {string}*/(message.sender)
+          );
         }
         break;
       case LLMGoPutDownIntention.TYPE:
@@ -194,8 +198,13 @@ export class BDIAgent {
             return;
           }
 
-          this.#llmIntention = new LLMGoPutDownIntention(/**@type {Coordinates}*/(message.deliveryCoordinates),/**@type {string}*/(message.value),/**@type {string}*/(message.sender));
-          this.#reviseGoPutDownIntention();
+          this.#llmIntention = new LLMGoPutDownIntention(
+            /**@type {Coordinates}*/(message.deliveryCoordinates),
+            /**@type {string}*/(message.value),
+            /**@type {string}*/(message.sender)
+          );
+
+          this.#reviseLLMGoPutDownIntention();
         }
         break;
       case LLMGreenRedLightIntention.TYPE:
@@ -203,7 +212,18 @@ export class BDIAgent {
           if (!("destinationCoordinates" in message) || !("destination" in message) || !("sender" in message)) {
             return;
           }
-          this.#llmIntention = new LLMGreenRedLightIntention(/**@type {{parity:String, type:string}}*/(message.destination), /**@type {Coordinates}*/(message.destinationCoordinates),/**@type {string}*/(message.sender));
+
+          //Check who was the sender: if the sender was the agent which is not the one connected to the llm, this means that the message was rejected by both agent, therefore it must be discarded
+          const sender = message.sender;
+          if (sender == this.#internalBelief.me.mateId && this.#internalBelief.me.llmId == this.#internalBelief.me.id) {
+            return;
+          }
+
+          this.#llmIntention = new LLMGreenRedLightIntention(
+            /**@type {{parity:String, type:string}}*/(message.destination),
+            /**@type {string}*/(message.sender),
+            /**@type {Coordinates}*/(message.destinationCoordinates)
+          );
         }
         break;
       case LLMSetTileWeightMultiplierMessage.TYPE:
@@ -212,7 +232,12 @@ export class BDIAgent {
             return;
           }
 
-          const intention = new LLMSetTileWeightMultiplierMessage({ coordinates: /**@type {Coordinates[]}*/(message.coordinates), multiplierString: /**@type {string[]}*/(message.multiplierString) });
+          const intention = new LLMSetTileWeightMultiplierMessage(
+            {
+              coordinates: /**@type {Coordinates[]}*/(message.coordinates),
+              multiplierString: /**@type {string[]}*/(message.multiplierString)
+            }
+          );
 
           for (let i = 0; i < intention.coordinates.length; i += 1) {
             //Copy needed for correcting obtain the string equivalent to use as a key and value
@@ -229,7 +254,7 @@ export class BDIAgent {
             return;
           }
 
-          const messageId = /**@type {string} */(message.llmAgentId);
+          const messageId = /**@type {string}*/(message.llmAgentId);
           this.#internalBelief.me.llmId = messageId;
         }
         break;
@@ -391,7 +416,7 @@ export class BDIAgent {
     return new GoToIntention(green.coordinates);
   }
 
-  async #reviseGoPutDownIntention() {
+  async #reviseLLMGoPutDownIntention() {
     //If a GoPutDownIntention was present in the queue and the new intention is a LLMGoPutDown replace the previous one instead of pushing a new one. In this particular situation, a push is not needed
 
     const goPutDownIntentionInQueueIndex = this.#getIndexOfFirstInstanceOfTypeInQueue(GoPutDownIntention);
@@ -430,15 +455,11 @@ export class BDIAgent {
         this.#llmIntention = undefined;
       }
 
-      return;
-
     } else if (this.#internalBelief.carriedParcelsCount == 0 && this.#llmIntention && LLMGoPutDownIntention.isTypeOf(this.#llmIntention)) {
       //If no put down are currently be performed, send to the other agent
       this.#llmIntention.sender = this.#internalBelief.me.id;
       this.#sendToMate(this.#llmIntention);
       this.#llmIntention = undefined;
-
-      return;
     }
   }
 

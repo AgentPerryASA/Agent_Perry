@@ -178,13 +178,13 @@ export class LLMAgent {
     let parity;
     let type;
 
-    let match = actionInput.match(/odd|even/);
+    let match = actionInput.match(/odds?|evens?/);
     if (match) {
-      parity = match[0];
+      parity = match[0].replace(/s$/, '');
     }
-    match = actionInput.match(/row|column/);
+    match = actionInput.match(/rows?|columns?/);
     if (match) {
-      type = match[0];
+      type = match[0].replace(/s$/, '');
     }
 
     if (parity && type) {
@@ -244,7 +244,6 @@ export class LLMAgent {
         switch (parsedAction.action) {
           case LLMGoToIntention.TYPE:
             {
-
               const extrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
               const value = this.#extractValue(parsedAction.actionInput);
 
@@ -257,7 +256,6 @@ export class LLMAgent {
             break;
           case LLMGoPutDownIntention.TYPE:
             {
-
               const extrCoord = this.#recoverCoordinatesFromActionInput(parsedAction.actionInput);
               const value = this.#extractValue(parsedAction.actionInput);
 
@@ -271,7 +269,6 @@ export class LLMAgent {
             break;
           case LLMSetTileWeightMultiplierMessage.TYPE:
             {
-
               const coordinatesListInString = this.#recoverListOfCoordinatesFromActionInput(parsedAction.actionInput);
               const multiplierListInString = this.#recoverListOfMultipliersFromActionInput(parsedAction.actionInput);
 
@@ -292,13 +289,15 @@ export class LLMAgent {
 
               if (extrCoord) {
                 const coordinates = new Coordinates(extrCoord[0], extrCoord[1]);
-                const intention = new LLMGreenRedLightIntention({ parity: "", type: "" }, coordinates, "llm" + this.#id);
+                const intention = new LLMGreenRedLightIntention({ parity: "", type: "" }, "llm" + this.#id, coordinates);
+
                 this.#sendToAgent(intention);
               } else {
                 const destination = this.#recoverDestinationForGreenRedLight(parsedAction.actionInput);
 
                 if (destination) {
-                  const intention = new LLMGreenRedLightIntention(destination, undefined, "llm" + this.#id);
+                  const intention = new LLMGreenRedLightIntention(destination, "llm" + this.#id);
+
                   this.#sendToAgent(intention);
                 }
               }
@@ -341,6 +340,7 @@ export class LLMAgent {
           process.exit(1);
         }
         const convertedMsg = new HandshakeMessage({ key: /**@type {string}*/(message.key) });
+
         if (id != this.#id && convertedMsg.key == handshakeKey) {
           const msg = new LLMSetIdMessage({ llmAgentId: this.#id });
           this.#mateId = id;
