@@ -9,7 +9,7 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs } from "./belief.js";
 import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
-import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage, LLMSetTileWeightMultiplierMessage } from './utils/message.js';
+import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage, LLMSetTileWeightMultiplierMessage, LLMGreenLightEmittedMessage } from './utils/message.js';
 import { LLMUpdatedParameters } from './utils/beliefs_utils.js';
 import { TargetTile } from './utils/path_utils.js';
 import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
@@ -270,6 +270,11 @@ export class BDIAgent {
         {
           const response = new LLMMapResponseMessage(this.#internalBelief.tileMap.tiles);
           reply(response);
+        }
+        break;
+      case LLMGreenLightEmittedMessage.TYPE:
+        {
+          this.#internalBelief.isWaitingForGreenLight = false;
         }
         break;
       default:

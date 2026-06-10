@@ -3,7 +3,7 @@
 import "dotenv/config";
 import OpenAI from "openai";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk";
-import { LLMIntentionMessage, BDIResponseMessage, HandshakeMessage, LLMParametersTuningRequestMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMSetTileWeightMultiplierMessage } from "./utils/message.js";
+import { HandshakeMessage, LLMParametersTuningRequestMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMSetTileWeightMultiplierMessage, LLMGreenLightEmittedMessage } from "./utils/message.js";
 import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention } from "./llm_intention.js";
 import { LLMUpdatedParameters } from "./utils/beliefs_utils.js";
 import { calc, findExtremePosition, getLatLong, getTemp, webSearch } from "./utils/llm_tools.js";
@@ -108,6 +108,8 @@ export class LLMAgent {
         destinationX: <x coordinate> destinationY: <y coordinate>
 
         otherwise, return where to move in a very brief comment, just the destination.
+      
+      - ${LLMGreenLightEmittedMessage.TYPE}: tell the agent, that is waiting for the green light, that now he can continue to play.
 
       - directAnswer: make the agent say a certain phrase; Input is the phrase. Don't use this tool unless the question is asking to say some sort of information without involving any other action. Example: requiring to drop or get a parcel is not something suitable for this tool. If the question asked to go to a certain tile this action is not suitable.
 
@@ -303,7 +305,13 @@ export class LLMAgent {
                 }
               }
             }
-
+            break;
+          case LLMGreenLightEmittedMessage.TYPE:
+            {
+              const msg = new LLMGreenLightEmittedMessage();
+              this.#sendToAgent(msg);
+              this.#sendToAgent(msg, this.#mateId);
+            }
             break;
           case "directAnswer":
             {
@@ -327,8 +335,6 @@ export class LLMAgent {
       //Reject if message was written in chat (not useful at this point) or the message if from the other peer and it is not whitelisted
       return;
     }
-
-    let msg;
 
     switch (message.type) {
       case HandshakeMessage.TYPE:
@@ -369,18 +375,12 @@ export class LLMAgent {
           );
         }
         break;
-      case LLMIntentionMessage.TYPE:
-        break;
-      case BDIResponseMessage.TYPE:
-        // @ts-ignore
-        msg = new BDIResponseMessage(message);
-        break;
       case LLMParametersTuningRequestMessage.TYPE:
         if (!("currentParameters" in message)) {
           return;
         }
 
-        msg = new LLMParametersTuningRequestMessage({ currentParameters: /**@type {string}*/(message.currentParameters) });
+        const msg = new LLMParametersTuningRequestMessage({ currentParameters: /**@type {string}*/(message.currentParameters) });
 
         if (this.#paramsTuningMessages.get(id).length == 7) {
           // If the conversation history is too long, forget about the oldest conversation (maintaining the INTRO_PROMPT)

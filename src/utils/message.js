@@ -1,4 +1,4 @@
-/** @typedef Message @type { HandshakeMessage | LLMIntentionMessage | LLMIntentionTakenChargeMessage | BDIResponseMessage | LLMSetIdMessage | LLMParametersTuningResponseMessage | LLMMapRequestMessage | LLMMapResponseMessage} */
+/** @typedef Message @type { HandshakeMessage | LLMSetIdMessage | LLMParametersTuningResponseMessage | LLMMapRequestMessage | LLMMapResponseMessage | LLMGreenLightEmittedMessage } */
 /** @typedef LLMIntention @type {import("../llm_intention.js").LLMIntention} */
 
 import { LLMUpdatedParameters } from "./beliefs_utils.js";
@@ -23,46 +23,8 @@ export class HandshakeMessage {
   }
 }
 
-export class LLMIntentionMessage {
-  static #TYPE = "llmintention";
-
-  type;
-  intention;
-
-  /**
-   * @param {{intention: LLMIntention}} message
-   */
-  constructor({ intention }) {
-    this.type = LLMIntentionMessage.TYPE;
-    this.intention = intention;
-  }
-
-  static get TYPE() {
-    return this.#TYPE;
-  }
-}
-
-export class LLMIntentionTakenChargeMessage {
-  static #TYPE = "llmintentiontakencharge";
-
-  type;
-  intention;
-
-  /**
-   * @param {{intention: LLMIntention}} message
-   */
-  constructor({ intention }) {
-    this.type = LLMIntentionTakenChargeMessage.#TYPE;
-    this.intention = intention;
-  }
-
-  static get TYPE() {
-    return this.#TYPE;
-  }
-}
-
 export class LLMSetIdMessage {
-  static #TYPE = "llmsetId";
+  static #TYPE = "llmSetId";
 
   type;
   llmAgentId;
@@ -81,7 +43,7 @@ export class LLMSetIdMessage {
 }
 
 export class LLMParametersTuningRequestMessage {
-  static #TYPE = "llmparameterstuningrequest";
+  static #TYPE = "llmParametersTuningRequest";
 
   currentParameters;
   type;
@@ -101,7 +63,7 @@ export class LLMParametersTuningRequestMessage {
 }
 
 export class LLMParametersTuningResponseMessage {
-  static #TYPE = "llmparameterstuningresponse";
+  static #TYPE = "llmParametersTuningTesponse";
 
   updatedParameters;
   type;
@@ -120,7 +82,7 @@ export class LLMParametersTuningResponseMessage {
 }
 
 export class LLMMapRequestMessage {
-  static #TYPE = "llmmaprequest";
+  static #TYPE = "llmMapRequest";
   type;
 
   constructor() {
@@ -133,7 +95,7 @@ export class LLMMapRequestMessage {
 }
 
 export class LLMMapResponseMessage {
-  static #TYPE = "llmmapresponse";
+  static #TYPE = "llmMapResponse";
 
   /**@type {string[][]}*/
   map;
@@ -154,7 +116,7 @@ export class LLMMapResponseMessage {
 }
 
 export class LLMSetTileWeightMultiplierMessage {
-  static #TYPE = "llmsettileweightmultiplier";
+  static #TYPE = "llmSetTileWeightMultiplier";
 
   type;
   coordinates;
@@ -174,18 +136,13 @@ export class LLMSetTileWeightMultiplierMessage {
   }
 }
 
-export class BDIResponseMessage {
-  static #TYPE = "bdiresponse";
+export class LLMGreenLightEmittedMessage {
+  static #TYPE = "llmGreenLightEmitted";
 
   type;
-  content;
 
-  /**
-   * @param {{content: string}} message
-   */
-  constructor({ content }) {
-    this.type = BDIResponseMessage.#TYPE;
-    this.content = content;
+  constructor() {
+    this.type = LLMGreenLightEmittedMessage.#TYPE;
   }
 
   static get TYPE() {
