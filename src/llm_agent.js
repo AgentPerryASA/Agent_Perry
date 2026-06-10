@@ -299,6 +299,7 @@ export class LLMAgent {
                   const intention = new LLMGreenRedLightIntention(destination, "llm" + this.#id);
 
                   this.#sendToAgent(intention);
+                  this.#sendToAgent(intention, this.#mateId);
                 }
               }
             }

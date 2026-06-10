@@ -6,7 +6,7 @@
 
 import { Beliefset } from "@unitn-asa/pddl-client";
 import { PathFinder } from "./path_finder.js";
-import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan } from "./plan.js";
+import { GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan, LLMGreenRedLightPlan } from "./plan.js";
 import { GoToInteractionData, LLMUpdatedParameters, Parcel, WorldMap } from "./utils/beliefs_utils.js";
 import { TargetTile } from "./utils/path_utils.js";
 import { Me } from "./me.js";
@@ -59,7 +59,7 @@ export class Beliefs {
   /**@type {Beliefset} */
   #plannerBeliefSet;
 
-  /**@type {(typeof GoToPlan | typeof GoPickUpPlan | typeof GoPutDownPlan | typeof DeviateAndPickUpPlan | typeof DeviateUsingAStarPlan | typeof DeviateUsingPlannerPlan)[]}*/
+  /**@type {(typeof GoToPlan | typeof GoPickUpPlan | typeof GoPutDownPlan | typeof DeviateAndPickUpPlan | typeof DeviateUsingAStarPlan | typeof DeviateUsingPlannerPlan | typeof LLMGreenRedLightPlan)[]}*/
   #planLibrary;
 
   /** @type { TargetTile | undefined } */
@@ -94,6 +94,8 @@ export class Beliefs {
   /**@type {Map<string,string>}*/
   #enhancedDeliveryTilesMap;
 
+  #isWaitingForGreenLight;
+
   constructor() {
     this.#parcelList = [];
     this.#tileMap = new WorldMap([], [], [], []);
@@ -110,7 +112,7 @@ export class Beliefs {
     this.#me = new Me("", "", 0, 0, new Coordinates(0, 0));
     this.#tileWithCrateMap = new Map();
     this.#plannerBeliefSet = new Beliefset();
-    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan];
+    this.#planLibrary = [GoToPlan, GoPickUpPlan, GoPutDownPlan, DeviateAndPickUpPlan, DeviateUsingAStarPlan, DeviateUsingPlannerPlan, LLMGreenRedLightPlan];
     this.#encounteredAgentsIdList = new Map();
     this.#goToInteractionData = new GoToInteractionData();
     this.#numberOfCheckedTilesForAgentPresence = 4;
@@ -120,6 +122,7 @@ export class Beliefs {
     this.#enhancedDeliveryTilesMap = new Map();
     this.#randomFunctionType = CosineRandomFunction.TYPE;
     RandomFunction.setFunctionType(this.#randomFunctionType);
+    this.#isWaitingForGreenLight = false;
   }
 
   get planLibrary() {
@@ -190,12 +193,20 @@ export class Beliefs {
     return this.#enhancedDeliveryTilesMap;
   }
 
+  get isWaitingForGreenLight() {
+    return this.#isWaitingForGreenLight;
+  }
+
   set deviateAndPickupIntentionCounter(value) {
     this.#deviateAndPickupIntentionCounter = value;
   }
 
   set currentTargetTile(tile) {
     this.#currentTargetTile = tile;
+  }
+
+  set isWaitingForGreenLight(value) {
+    this.#isWaitingForGreenLight = value;
   }
 
   /**

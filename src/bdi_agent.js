@@ -9,7 +9,7 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs } from "./belief.js";
 import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
-import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMIntentionMessage, LLMIntentionTakenChargeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage, LLMSetTileWeightMultiplierMessage } from './utils/message.js';
+import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage, LLMSetTileWeightMultiplierMessage } from './utils/message.js';
 import { LLMUpdatedParameters } from './utils/beliefs_utils.js';
 import { TargetTile } from './utils/path_utils.js';
 import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
@@ -110,17 +110,18 @@ export class BDIAgent {
         await this.#generateBestIntention();
       }, 100);
 
-      //Ask the LLM for parameters fine tuning every 1-2 minutes
+      //Ask the LLM for parameters fine tuning every 30 seconds
       setInterval(async () => {
+        // Do not send a new request if we are waiting for the previous one
         if (this.#wasRequestForTuningSent) {
           return;
         }
 
         this.#wasRequestForTuningSent = true;
 
-        //await this.#requestParametersTuningToLLM();
+        await this.#requestParametersTuningToLLM();
 
-      }, 20 * 1000);
+      }, 30 * 1000);
     });
   }
 
@@ -213,12 +214,6 @@ export class BDIAgent {
             return;
           }
 
-          //Check who was the sender: if the sender was the agent which is not the one connected to the llm, this means that the message was rejected by both agent, therefore it must be discarded
-          const sender = message.sender;
-          if (sender == this.#internalBelief.me.mateId && this.#internalBelief.me.llmId == this.#internalBelief.me.id) {
-            return;
-          }
-
           this.#llmIntention = new LLMGreenRedLightIntention(
             /**@type {{parity:String, type:string}}*/(message.destination),
             /**@type {string}*/(message.sender),
@@ -297,9 +292,7 @@ export class BDIAgent {
 
   async #generateBestIntention() {
     //LLM intention always have priority
-    /**
-     * @type {LLMIntention | Intention | undefined}
-     */
+    /**@type {LLMIntention | Intention | undefined}*/
     let bestIntention = this.#selectBestIntention();
 
     if (bestIntention) {
@@ -308,6 +301,13 @@ export class BDIAgent {
   }
 
   #selectBestIntention() {
+    if (this.#internalBelief.isWaitingForGreenLight) {
+      return;
+    }
+
+    if (this.#llmIntention && LLMGreenRedLightIntention.isTypeOf(this.#llmIntention)) {
+      return this.#llmIntention;
+    }
 
     const MAX_DISTANCE_LLM_GO_TO_DEVIATION = 3;
 
@@ -331,7 +331,6 @@ export class BDIAgent {
         this.#sendToMate(this.#llmIntention);
         this.#llmIntention = undefined;
       }
-
     }
 
     const numberOfPossibleDeviations = this.internalBelief.numberOfPossibleDeviations;
@@ -408,7 +407,6 @@ export class BDIAgent {
       return bestIntention;
     }
 
-
     // As long as a GoToIntention is running, because we had no free parcels around us or in our memory,
     // do not generate other GoToIntentions
     // NOTE: GoToIntention generation cannot be allowed if the current one is already a GoToIntention
@@ -471,7 +469,6 @@ export class BDIAgent {
         }
 
         this.#llmIntention = undefined;
-
       } else {
         //If not convenient, send to the other agent
 
@@ -479,7 +476,6 @@ export class BDIAgent {
         this.#sendToMate(this.#llmIntention);
         this.#llmIntention = undefined;
       }
-
     } else if (this.#internalBelief.carriedParcelsCount == 0 && this.#llmIntention && LLMGoPutDownIntention.isTypeOf(this.#llmIntention)) {
       //If no put down are currently be performed, send to the other agent
       this.#llmIntention.sender = this.#internalBelief.me.id;
@@ -516,6 +512,10 @@ export class BDIAgent {
     }
 
     this.#intentionPlanQueue.push({ intention: intention, plan: plan });
+
+    if (LLMGreenRedLightIntention.isTypeOf(intention)) {
+      this.#internalBelief.isWaitingForGreenLight = true;
+    }
 
     if (LLMIntention.isTypeOf(intention)) {
       //Now that the intention is about to be executed, free the received llmintention

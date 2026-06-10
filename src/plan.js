@@ -1,4 +1,4 @@
-/** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan | DeviateUsingAStarPlan | DeviateUsingPlannerPlan } */
+/** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan | DeviateUsingAStarPlan | DeviateUsingPlannerPlan | LLMGreenRedLightPlan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
 
 import { BDIAgent } from "./bdi_agent.js";
@@ -13,7 +13,7 @@ import {
 } from "./intention.js";
 import { PathFinder } from "./path_finder.js";
 import { MapPoint } from "./utils/path_utils.js";
-import { LLMGoPutDownIntention, LLMGoToIntention, LLMIntention } from "./llm_intention.js";
+import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
 
 class NearbyAgent {
   /**@type {Boolean}*/
@@ -23,7 +23,6 @@ class NearbyAgent {
   #aheadTileIndex;
 
   /**
-   * 
    * @param {Boolean} nearbyAgentDetected 
    * @param {Number | undefined} aheadTileIndex 
    */
@@ -856,7 +855,6 @@ export class DeviateAndPickUpPlan extends PlanBase {
    */
   constructor(agent) {
     super(agent);
-    // TODO: expose pathfinder from beliefs (goto too)
     this.#pathFinder = this.agent.internalBelief.pathFinder;
   }
 
@@ -903,6 +901,85 @@ export class DeviateAndPickUpPlan extends PlanBase {
 
     this.isRunning = false;
     return true;
+  }
+
+  /**
+   * @param {Plan} plan
+   */
+  static isTypeOf(plan) {
+    return plan instanceof this;
+  }
+}
+
+export class LLMGreenRedLightPlan extends PlanBase {
+  /**
+   * @param {BDIAgent} agent 
+   */
+  constructor(agent) {
+    super(agent);
+  }
+
+  /**
+   * @param {LLMIntention | Intention} intention
+   */
+  static isApplicable(intention) {
+    return LLMGreenRedLightIntention.isTypeOf(intention);
+  }
+
+  /**
+   * @param {LLMGreenRedLightIntention} intention
+   */
+  async execute(intention) {
+    this.isRunning = true;
+    this.isStopped = false;
+
+    let subIntention;
+    if (intention.destinationCoordinates) {
+      subIntention = new GoToIntention(intention.destinationCoordinates);
+    } else {
+      const getRows = intention.destination.type == "row";
+      const getEven = intention.destination.parity == "even";
+      const res = this.agent.internalBelief.tileMap.getSetOfRowsOrColumn(getRows, getEven);
+
+      let minDistance = Number.MAX_VALUE;
+      let closestPoint;
+      for (const point of res) {
+        const distance = this.#distance(this.agent.internalBelief.me.coordinates, point);
+        if (distance <= minDistance) {
+          minDistance = distance;
+          closestPoint = point;
+        }
+      }
+
+      if (closestPoint) {
+        subIntention = new GoToIntention(closestPoint);
+      }
+    }
+
+    if (!subIntention) {
+      this.isStopped = true;
+      this.isRunning = false;
+      return false;
+    }
+
+    const isCompleted = await this.achieveSubIntention(subIntention);
+
+    if (!isCompleted) {
+      // The sub-intention was stopped
+      this.isStopped = true;
+      this.isRunning = false;
+      return false;
+    }
+
+    this.isRunning = false;
+    return true;
+  }
+
+  /** @type { function ({x:number, y:number}, {x:number, y:number}): number } */
+  #distance({ x: x1, y: y1 }, { x: x2, y: y2 }) {
+    const dx = Math.abs(Math.round(x1) - Math.round(x2));
+    const dy = Math.abs(Math.round(y1) - Math.round(y2));
+    return dx + dy;
   }
 
   /**

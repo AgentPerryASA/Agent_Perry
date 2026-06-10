@@ -32,7 +32,14 @@ export class LLMUpdatedParameters {
    * @param {string} randomFunction 
    * @param {number} minScoreMultiplier 
    */
-  constructor(numberOfPossibleDeviations, numberOfCheckedTilesForAgentPresence, numberOfIgnoredTilesForAgentPresence, movementDelay, randomFunction, minScoreMultiplier) {
+  constructor(
+    numberOfPossibleDeviations,
+    numberOfCheckedTilesForAgentPresence,
+    numberOfIgnoredTilesForAgentPresence,
+    movementDelay,
+    randomFunction,
+    minScoreMultiplier
+  ) {
     this.numberOfPossibleDeviations = numberOfPossibleDeviations;
     this.numberOfCheckedTilesForAgentPresence = numberOfCheckedTilesForAgentPresence;
     this.numberOfIgnoredTilesForAgentPresence = numberOfIgnoredTilesForAgentPresence;
@@ -98,6 +105,25 @@ export class WorldMap {
     }
     return undefined;
   }
+
+  /**
+   * @param {boolean} getRows 
+   * @param {boolean} getEven 
+   */
+  getSetOfRowsOrColumn(getRows, getEven) {
+    const res = [];
+
+    for (let i = 0; i < this.tiles.length; i += getRows ? 1 : 2) {
+      for (let j = 0; j < this.tiles[0].length; j += getRows ? 2 : 1) {
+        const x = getRows ? i : (getEven ? i + 1 : i);
+        const y = !getRows ? j : (getEven ? j + 1 : j);
+
+        res.push(new Coordinates(x, y));
+      }
+    }
+
+    return res;
+  }
 }
 
 export class Parcel {
@@ -148,4 +174,4 @@ export class GoToInteractionData {
 
     return 0;
   }
-};
+}
