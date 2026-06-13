@@ -149,3 +149,22 @@ export class LLMGreenLightEmittedMessage {
     return this.#TYPE;
   }
 }
+
+export class LLMSetAdditionalTuningParametersMessage {
+  static #TYPE = "llmsetadditionaltuningparameters";
+
+  type;
+  additionalInfoForLLMTuning;
+
+  /**
+   * @param {string} info 
+   */
+  constructor(info) {
+    this.type = LLMSetAdditionalTuningParametersMessage.#TYPE;
+    this.additionalInfoForLLMTuning = info;
+  }
+
+  static get TYPE() {
+    return this.#TYPE;
+  }
+}

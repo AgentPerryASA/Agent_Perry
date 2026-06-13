@@ -94,7 +94,11 @@ export class Beliefs {
   /**@type {Map<string,string>}*/
   #enhancedDeliveryTilesMap;
 
+  /**@type {boolean}*/
   #isWaitingForGreenLight;
+
+  /**@type {string}*/
+  #additionalInfoForLLMTuning;
 
   constructor() {
     this.#parcelList = [];
@@ -123,6 +127,7 @@ export class Beliefs {
     this.#randomFunctionType = CosineRandomFunction.TYPE;
     RandomFunction.setFunctionType(this.#randomFunctionType);
     this.#isWaitingForGreenLight = false;
+    this.#additionalInfoForLLMTuning = "";
   }
 
   get planLibrary() {
@@ -197,6 +202,10 @@ export class Beliefs {
     return this.#isWaitingForGreenLight;
   }
 
+  get additionalInfoForLLMTuning() {
+    return this.#additionalInfoForLLMTuning;
+  }
+
   set deviateAndPickupIntentionCounter(value) {
     this.#deviateAndPickupIntentionCounter = value;
   }
@@ -207,6 +216,10 @@ export class Beliefs {
 
   set isWaitingForGreenLight(value) {
     this.#isWaitingForGreenLight = value;
+  }
+
+  set additionalInfoForLLMTuning(value) {
+    this.#additionalInfoForLLMTuning = value;
   }
 
   /**
@@ -599,7 +612,7 @@ export class Beliefs {
       - variance score of parcels: ${this.#parcelVarScore}
       - number of agents: ${this.getNumberOfEncounteredAgents() + 1}
       - mean of attempts to follow a path: ${this.goToInteractionData.getGoToBlockMean()}
-      - random function: cosine
+      - random function: ${this.#randomFunctionType}
 
     current parameters:
       - number of possible deviations: ${this.#numberOfPossibleDeviations}
@@ -607,6 +620,9 @@ export class Beliefs {
       - delay per movement: ${this.#me.agentMovementDelay} ms
       - random function: ${this.#randomFunctionType}
       - multiplier for parcelMinScore: ${this.#parcelMinScoreMultiplier}
+
+    additional info:
+      ${this.#additionalInfoForLLMTuning}
     `.trim();
 
     return beliefs;

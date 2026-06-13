@@ -3,7 +3,7 @@
 import "dotenv/config";
 import OpenAI from "openai";
 import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk";
-import { HandshakeMessage, LLMParametersTuningRequestMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMSetTileWeightMultiplierMessage, LLMGreenLightEmittedMessage } from "./utils/message.js";
+import { HandshakeMessage, LLMParametersTuningRequestMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMSetTileWeightMultiplierMessage, LLMGreenLightEmittedMessage, LLMSetAdditionalTuningParametersMessage } from "./utils/message.js";
 import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention } from "./llm_intention.js";
 import { LLMUpdatedParameters } from "./utils/beliefs_utils.js";
 import { calc, findExtremePosition, getLatLong, getTemp, webSearch } from "./utils/llm_tools.js";
@@ -111,6 +111,8 @@ export class LLMAgent {
       
       - ${LLMGreenLightEmittedMessage.TYPE}: tell the agent, that is waiting for the green light, that now he can continue to play.
 
+      - ${LLMSetAdditionalTuningParametersMessage.TYPE}: tell the agent to set some properties that need to be considered in case he wants to modify the maximum number of parcels that can be grabbed before a putdown has to be emitted (called number of deviation). Input is a simple string with a comment that will be provided to another LLM and speak about deviation, not max parcel.
+
       - directAnswer: make the agent say a certain phrase; Input is the phrase. Don't use this tool unless the question is asking to say some sort of information without involving any other action. Example: requiring to drop or get a parcel is not something suitable for this tool. If the question asked to go to a certain tile this action is not suitable.
 
       Do not include any motivation, just reply in the form:
@@ -143,6 +145,8 @@ export class LLMAgent {
       - delay in sending movement request to the server (between 0 and 100 ms)
       - type of function to randomize the destination (cosine for higher randomicity, hyperbola for privileging close tiles)
       - multiplier m to get parcelMinScore = parcelMaxScore * m (between 0.2 and 0.6)
+
+      finally, some additional information may or may not be included.
 
       You are requested to provide new values for each parameter if useful to improve performance. Compare the input with previous data if any to better understand how to predict the values. Do not include any motivation, just reply in the form
 
@@ -313,6 +317,12 @@ export class LLMAgent {
               this.#sendToAgent(msg, this.#mateId);
             }
             break;
+          case LLMSetAdditionalTuningParametersMessage.TYPE:
+            {
+              const msg = new LLMSetAdditionalTuningParametersMessage(parsedAction.actionInput);
+              this.#sendToAgent(msg);
+              this.#sendToAgent(msg, this.#mateId);
+            }
           case "directAnswer":
             {
               this.#socket.emitShout(parsedAction.actionInput);
@@ -384,7 +394,7 @@ export class LLMAgent {
 
         if (this.#paramsTuningMessages.get(id).length == 7) {
           // If the conversation history is too long, forget about the oldest conversation (maintaining the INTRO_PROMPT)
-          this.#paramsTuningMessages = this.#paramsTuningMessages.get(id).splice(1, 2);
+          this.#paramsTuningMessages.get(id).splice(1, 2);
         }
 
         const parameters = await this.#onParametersTuningRequested(id, msg.currentParameters);
@@ -411,8 +421,8 @@ export class LLMAgent {
       return;
     }
 
-    //console.log(`(${id}) LLM received:`);
-    //console.log(text);
+    /*console.log(`(${id}) LLM received:`);
+    console.log(text);*/
 
     this.#paramsTuningMessages.get(id).push({
       role: "user",
@@ -487,7 +497,11 @@ export class LLMAgent {
         case "ignoreTask":
           return undefined;
         case calc.name:
-          result = calc(actionInput);
+          try {
+            result = calc(actionInput);
+          } catch {
+            return;
+          }
           break;
         case getLatLong.name:
           result = await getLatLong(actionInput);

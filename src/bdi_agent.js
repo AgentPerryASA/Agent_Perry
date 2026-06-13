@@ -9,7 +9,7 @@ import { DjsConnect } from "@unitn-asa/deliveroo-js-sdk/client/DjsConnect.js";
 import { GoPickUpIntention, GoPutDownIntention, GoToIntention, DeviateAndPickUpIntention } from "./intention.js";
 import { Beliefs } from "./belief.js";
 import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
-import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage, LLMSetTileWeightMultiplierMessage, LLMGreenLightEmittedMessage } from './utils/message.js';
+import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage, LLMSetTileWeightMultiplierMessage, LLMGreenLightEmittedMessage, LLMSetAdditionalTuningParametersMessage } from './utils/message.js';
 import { LLMUpdatedParameters } from './utils/beliefs_utils.js';
 import { TargetTile } from './utils/path_utils.js';
 import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
@@ -121,7 +121,7 @@ export class BDIAgent {
 
         await this.#requestParametersTuningToLLM();
 
-      }, 30 * 1000);
+      }, 5 * 1000);
     });
   }
 
@@ -210,14 +210,23 @@ export class BDIAgent {
         break;
       case LLMGreenRedLightIntention.TYPE:
         {
-          if (!("destinationCoordinates" in message) || !("destination" in message) || !("sender" in message)) {
+          if (!("destination" in message) || !("sender" in message)) {
             return;
+          }
+
+          let destCoord;
+
+          if (!("destinationCoordinates" in message)) {
+            destCoord = undefined;
+          } else {
+            destCoord = /**@type {Coordinates} */(message.destinationCoordinates);
+            destCoord = new Coordinates(destCoord.x, destCoord.y);
           }
 
           this.#llmIntention = new LLMGreenRedLightIntention(
             /**@type {{parity:String, type:string}}*/(message.destination),
             /**@type {string}*/(message.sender),
-            /**@type {Coordinates}*/(message.destinationCoordinates)
+            /**@type {Coordinates}*/(destCoord)
           );
         }
         break;
@@ -258,6 +267,7 @@ export class BDIAgent {
           if (!("updatedParameters" in message)) {
             return;
           }
+          console.log(message.updatedParameters);
 
           const updatedParameters = /**@type {LLMUpdatedParameters}*/(message.updatedParameters);
 
@@ -275,6 +285,16 @@ export class BDIAgent {
       case LLMGreenLightEmittedMessage.TYPE:
         {
           this.#internalBelief.isWaitingForGreenLight = false;
+        }
+        break;
+      case LLMSetAdditionalTuningParametersMessage.TYPE:
+        {
+          if (!("additionalInfoForLLMTuning" in message)) {
+            return;
+          }
+
+          this.#internalBelief.additionalInfoForLLMTuning = /**@type {string}*/(message.additionalInfoForLLMTuning);
+          console.log("parameters setted;");
         }
         break;
       default:
