@@ -12,7 +12,7 @@ import { GoPutDownPlan, DeviateAndPickUpPlan } from "./plan.js";
 import { LLMParametersTuningRequestMessage, HandshakeMessage, LLMSetIdMessage, LLMParametersTuningResponseMessage, LLMMapRequestMessage, LLMMapResponseMessage, LLMSetTileWeightMultiplierMessage, LLMGreenLightEmittedMessage, LLMSetAdditionalTuningParametersMessage } from './utils/message.js';
 import { LLMUpdatedParameters } from './utils/beliefs_utils.js';
 import { TargetTile } from './utils/path_utils.js';
-import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
+import { LLMGoPickUpIntention, LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
 import { calc } from './utils/llm_tools.js';
 
 export class BDIAgent {
@@ -111,17 +111,20 @@ export class BDIAgent {
       }, 100);
 
       //Ask the LLM for parameters fine tuning every 30 seconds
-      setInterval(async () => {
-        // Do not send a new request if we are waiting for the previous one
-        if (this.#wasRequestForTuningSent) {
-          return;
-        }
+      if (process.env.LLM) {
+        setInterval(async () => {
+          // Do not send a new request if we are waiting for the previous one
+          if (this.#wasRequestForTuningSent) {
+            return;
+          }
 
-        this.#wasRequestForTuningSent = true;
+          this.#wasRequestForTuningSent = true;
 
-        await this.#requestParametersTuningToLLM();
+          await this.#requestParametersTuningToLLM();
 
-      }, 5 * 1000);
+        }, 30 * 1000);
+      }
+
     });
   }
 
@@ -199,8 +202,22 @@ export class BDIAgent {
             return;
           }
 
+          let coordinates = /**@type {Coordinates}*/(message.deliveryCoordinates);
+          const worldMap = this.#internalBelief.tileMap.tiles;
+
+          if (coordinates.x > worldMap.length ||
+            coordinates.y > worldMap[0].length ||
+            coordinates.x < 0 ||
+            coordinates.y < 0 ||
+            worldMap[coordinates.x][coordinates.y] == '0'
+          ) {
+            coordinates = new Coordinates(this.#internalBelief.me.coordinates.x, this.#internalBelief.me.coordinates.y);
+          }
+
+
+
           this.#llmIntention = new LLMGoPutDownIntention(
-            /**@type {Coordinates}*/(message.deliveryCoordinates),
+            coordinates,
             /**@type {string}*/(message.value),
             /**@type {string}*/(message.sender)
           );
@@ -267,7 +284,6 @@ export class BDIAgent {
           if (!("updatedParameters" in message)) {
             return;
           }
-          console.log(message.updatedParameters);
 
           const updatedParameters = /**@type {LLMUpdatedParameters}*/(message.updatedParameters);
 
@@ -287,6 +303,17 @@ export class BDIAgent {
           this.#internalBelief.isWaitingForGreenLight = false;
         }
         break;
+      case LLMGoPickUpIntention.TYPE:
+        {
+          if (!("parcelCoordinates" in message) || !("sender" in message)) {
+            return;
+          }
+
+          let destCoord = /**@type {Coordinates}*/(message.parcelCoordinates);
+          let sender = /**@type {string}*/(message.sender);
+
+          this.#llmIntention = new LLMGoPickUpIntention(destCoord, sender);
+        }
       case LLMSetAdditionalTuningParametersMessage.TYPE:
         {
           if (!("additionalInfoForLLMTuning" in message)) {
@@ -294,7 +321,7 @@ export class BDIAgent {
           }
 
           this.#internalBelief.additionalInfoForLLMTuning = /**@type {string}*/(message.additionalInfoForLLMTuning);
-          console.log("parameters setted;");
+
         }
         break;
       default:
@@ -328,6 +355,12 @@ export class BDIAgent {
   #selectBestIntention() {
     if (this.#internalBelief.isWaitingForGreenLight) {
       return;
+    }
+
+    if (this.#llmIntention && LLMGoPickUpIntention.isTypeOf(this.#llmIntention)) {
+      const i = this.#llmIntention;
+      this.#llmIntention = undefined;
+      return i;
     }
 
     if (this.#llmIntention && LLMGreenRedLightIntention.isTypeOf(this.#llmIntention)) {
@@ -553,6 +586,7 @@ export class BDIAgent {
   async #achieveCurrentIntention() {
     // @ts-ignore
     // NOTE: at this point, both currentIntention and currentPlan cannot be undefined
+
     const isCompleted = await this.#currentPlan.execute(this.#currentIntention);
 
     // Pop current intention-plan pair if the intention is achieved or, if it was stopped,
@@ -565,6 +599,19 @@ export class BDIAgent {
 
       const oldPlan = this.#currentPlan;
       this.#intentionPlanQueue.pop();
+
+      if (oldPlan && GoPutDownPlan.isTypeOf(oldPlan)) {
+        //If the previous plan was a GoPutDown, this could have been a special GoPutDown caused by the LLM in a non-red tile.
+        //If that is the case, therefore the agent is in a non-red tile, communicate to the other agent to pick up the putted down parcels
+        const agentCoordinates = this.#internalBelief.me.coordinates;
+        const agentId = this.#internalBelief.me.id;
+        const targetTile = new TargetTile(agentCoordinates);
+
+        if (!this.#internalBelief.tileMap.getRedTile(targetTile)) {
+          const msg = new LLMGoPickUpIntention(agentCoordinates, agentId);
+          this.#sendToMate(msg);
+        }
+      }
 
       if (this.#currentIntention) {
         if (oldPlan && DeviateAndPickUpPlan.isTypeOf(oldPlan)) {

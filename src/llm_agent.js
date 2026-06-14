@@ -79,11 +79,11 @@ export class LLMAgent {
       Available tools:
       - ignoreTask: use this tool only to say that it is not convenient to solve the task (because it would decrement the value of a parcel or the score of the agent). No input.
       - ${calc.name}: calculate the result of a mathematical expression. Input is the mathematical expression. If there are multiple = sign in the starting expression, this tool has to be used multiple times.
-      - ${findExtremePosition.name}: find an extreme position on the map. Available input are leftmost, rightmost, topmost and bottommost. If the position cannot be determine, the tool return the string "none". In such case, the next message must contain ignoreTask tool.
+      - ${findExtremePosition.name}: find an extreme position (leftmost, rightmost, topmost or bottommost) on the map. Available input are leftmost, rightmost, topmost and bottommost. If the position cannot be determine, the tool return the string "none". In such case, the next message must contain ignoreTask tool.
       - ${getLatLong.name}: get latitude and longitude of a real location (no tiles or coordinate of the game) given its english name. Input is the english name of a location (like a city).
       - ${getTemp.name}: get the current temperature in a location given its english name. Input is the english name of a location.
       - setQuestion: set a question for a web search. Input is the question.
-      - ${webSearch.name}: get an information contained in a specific website. Use first the tool setQuestion before using this tool. Input is the url of the website. Use this tool only if there is not a more appropriate tool.
+      - ${webSearch.name}: get an information contained in a specific website. Use first the tool setQuestion before using this tool. Input is the url of the website. Use this tool only if there is not a more appropriate tool. Do not use this tool if a website was not specified.
 
       Available actions:
       - ${LLMGoToIntention.TYPE}: tell the agent to go to a specific tile. Use this tool also if the question ask to pick up a parcel. Requires coordinates in the following format, containing:
@@ -92,15 +92,17 @@ export class LLMAgent {
         value: <how much point the agent will get if it decide to go to the cell>
 
         Coordinates must be a positive integer number. This tool MUST be used if the question was to get a parcel from some tile or to simply move to another place but should be ignored if the revenue is negative.
-      - ${LLMGoPutDownIntention.TYPE}: tell the agent to drop a parcel in a specific tile. Do not use this tool for any other reason. Requires coordinates in the following format, containing:
+
+      - ${LLMGoPutDownIntention.TYPE}: tell the agent to drop a parcel in a specific tile. You must use this also to tell an agent to team up with another agent to deliver a parcel. Do not use this tool for any other reason unless the two specified. Requires coordinates and revenue value in the following format, containing:
 
         destinationX: <x coordinate> destinationY: <y coordinate>
         value: <how much point the agent will additionally get if it decide to go to the cell. must be an expression starting with a mathematical symbol>
 
-        Coordinates must be a positive integer number. This tool MUST be used if the question was to drop a parcel in some tile but should be ignored if the revenue is negative.
+        Coordinates must be a positive integer number. If given coordinates is leftmost, rightmost, topmost or bottommost ${findExtremePosition.name} must be used. This tool MUST be used if the question was to drop a parcel in some tile but should be ignored if the revenue is negative. If a revenue is not present, set the revenue as 0. If a revenue is present this must be added.
+
       - ${LLMSetTileWeightMultiplierMessage.TYPE}: modify delivery tiles weight. Sometimes some delivery tile makes the agent acquire some points. If that is the case, this action can be used to modify the tile value weight so it will loose or acquire priority. If a tile make the delivery worse, still use this action to advise the agent. Weight should be set according to the request but, since you don't know the current weight of a certain tile, it has to be express in a formula (like *0.3 or *2 or +1 or -3 and so on, these are just example, you need to respect what the request says, but consider that the weight are > 0 and < 1, since what you set as multiplier expression can have the opposite result). Input are the coordinates of the affected tiles and the modifier in this format:
 
-        coordinates: (<x coordinate>:<y coordinate>), (<x coordinate>:<y coordinate>), and so on for all the affected tiles
+        coordinates: (<x coordinate>:<y coordinate>), (<x coordinate>:<y coordinate>), and so on for all the affected tiles (don't insert two times the parentheses)
         multiplierString: (<modifier expression for the first tile>), (<modifier expression for the second tile>), and so on for all the affected tiles
 
       - ${LLMGreenRedLightIntention.TYPE}: tell the agent to go to either a specific tile or a set of tiles, and he has to wait for further instructions (e.g. "move to an odd-numbered row and wait for our message before moving again"). If a specific coordinate is provided, return it in the format:
@@ -323,6 +325,7 @@ export class LLMAgent {
               this.#sendToAgent(msg);
               this.#sendToAgent(msg, this.#mateId);
             }
+            break;
           case "directAnswer":
             {
               this.#socket.emitShout(parsedAction.actionInput);
@@ -340,7 +343,7 @@ export class LLMAgent {
     }
 
     // Accept only messages from the associated BDI agent and its mate
-    // TODO: ignore every Message even if they come from the BDI agent but some special responses
+
     if ((typeof message === "string") || !("type" in message) || ((id != this.#id || id != this.#mateId) && !this.#whitelist.includes(/**@type {string}*/(message.type)))) {
       //Reject if message was written in chat (not useful at this point) or the message if from the other peer and it is not whitelisted
       return;
@@ -421,9 +424,6 @@ export class LLMAgent {
       return;
     }
 
-    /*console.log(`(${id}) LLM received:`);
-    console.log(text);*/
-
     this.#paramsTuningMessages.get(id).push({
       role: "user",
       content: text,
@@ -431,7 +431,6 @@ export class LLMAgent {
 
     // Ask the model whether it wants to answer directly or use a tool.
     const assistantDecision = await this.#callModel(this.#paramsTuningMessages.get(id));
-    //console.log(`\n(${id}) Assistant decision:\n${assistantDecision}\n`);
 
     // Store the result in a variable called assistantDecision and save it in the messages array.
     this.#paramsTuningMessages.get(id).push({
@@ -563,7 +562,13 @@ export class LLMAgent {
     const lines = text.split(/\r?\n|\r|\n/g);
     const values = [];
     for (const line of lines) {
-      values.push(line.split(":")[1].trim());
+      try {
+        values.push(line.split(":")[1].trim());
+      } catch {
+        //If the trim fails the output was malformed, therefore return
+        return;
+      }
+
     }
 
     const numDeviation = this.#clamp(Number(values[0]), 2, 5);

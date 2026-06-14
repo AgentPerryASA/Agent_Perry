@@ -297,9 +297,11 @@ export class Beliefs {
           this.#carriedParcelsMap.set(currentParcelFromSensedList.id, currentParcelFromSensedList);
         }
 
+        //Check if the parcel is not carried by anyone, has a value higher than a minimum score an is in a green tile (ignore parcel putted down by other agents)
         if (
           currentParcelFromSensedList.carriedBy == undefined &&
-          currentParcelFromSensedList.reward >= this.#parcelMinScore
+          currentParcelFromSensedList.reward >= this.#parcelMinScore &&
+          this.#tileMap.getGreenTile(new TargetTile(new Coordinates(currentParcelFromSensedList.x, currentParcelFromSensedList.y)))
         ) {
           currentParcelFromBelief.parcel = currentParcelFromSensedList;
           currentParcelFromBelief.lastUpdateTimestamp = endTime;
@@ -345,7 +347,8 @@ export class Beliefs {
     for (const [_, parcel] of sensedParcelsMap) {
       if (
         parcel.carriedBy == undefined &&
-        parcel.reward >= this.parcelMinScore
+        parcel.reward >= this.parcelMinScore &&
+        this.#tileMap.getGreenTile(new TargetTile(new Coordinates(parcel.x, parcel.y)))
       ) {
         let newParcel = new Parcel(parcel, Date.now());
 

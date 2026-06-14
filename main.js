@@ -5,6 +5,8 @@ import { webSearch } from './src/utils/llm_tools.js';
 
 const token1 = process.env.TOKEN1;
 const token2 = process.env.TOKEN2;
+const enableMate = process.env.MATE;
+const llm = process.env.LLM;
 
 if (!token1) {
   console.error("Error: missing TOKEN1 in .env file");
@@ -16,6 +18,11 @@ if (!token2) {
 }
 
 new BDIAgent(token1);
-new BDIAgent(token2);
 
-new LLMAgent(token1);
+if (enableMate && enableMate == "enable") {
+  new BDIAgent(token2);
+}
+
+if (llm && llm == "enable") {
+  new LLMAgent(token1);
+}

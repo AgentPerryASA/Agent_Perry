@@ -26,6 +26,43 @@ export class LLMIntention {
   }
 }
 
+export class LLMGoPickUpIntention extends LLMIntention {
+  static #TYPE = "goPickUp";
+
+  type;
+  parcelCoordinates;
+
+  /**
+   * @param {Coordinates} parcelCoordinates 
+   * @param {string} sender
+   */
+  constructor(parcelCoordinates, sender) {
+    super(sender);
+    this.type = LLMGoPickUpIntention.#TYPE;
+    this.parcelCoordinates = parcelCoordinates;
+  }
+
+  static get TYPE() {
+    return this.#TYPE;
+  }
+
+  /**
+   * @param {LLMIntention | Intention} intention
+   */
+  isEqual(intention) {
+    // NOTE: destinationCoordinates attribute in intention if first condition true, so safe check
+    // @ts-ignore
+    return intention instanceof this.constructor && this.destinationCoordinates.isEqual(intention.destinationCoordinates);
+  }
+
+  /**
+   * @param {LLMIntention | Intention} intention 
+   */
+  static isTypeOf(intention) {
+    return intention instanceof this;
+  }
+}
+
 export class LLMGoPutDownIntention extends LLMIntention {
   static #TYPE = "goPutDown";
 

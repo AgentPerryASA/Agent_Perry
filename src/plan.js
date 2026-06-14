@@ -13,7 +13,7 @@ import {
 } from "./intention.js";
 import { PathFinder } from "./path_finder.js";
 import { MapPoint } from "./utils/path_utils.js";
-import { LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
+import { LLMGoPickUpIntention, LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
 
 class NearbyAgent {
   /**@type {Boolean}*/
@@ -744,7 +744,7 @@ export class GoPickUpPlan extends PlanBase {
    * @param {LLMIntention | Intention} intention
    */
   static isApplicable(intention) {
-    return GoPickUpIntention.isTypeOf(intention);
+    return GoPickUpIntention.isTypeOf(intention) || LLMGoPickUpIntention.isTypeOf(intention);
   }
 
   /**
