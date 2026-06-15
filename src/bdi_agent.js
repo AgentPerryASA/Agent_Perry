@@ -100,7 +100,6 @@ export class BDIAgent {
       // Keep track of parcels around us
       this.#socket.onSensing(async sensing => {
         this.#internalBelief.reviseParcelList(sensing.parcels);
-        this.#internalBelief.me.reviseCarriedParcelList(sensing.parcels);
         this.#internalBelief.updateNearAgentList(sensing.agents);
         this.#internalBelief.updateTileWithCrate(sensing.crates);
       });
@@ -375,7 +374,7 @@ export class BDIAgent {
 
       let valueOfCarriedParcels = 0;
 
-      for (const [_, parcel] of this.#internalBelief.carriedParcelsMap) {
+      for (const [_, parcel] of this.#internalBelief.me.carriedParcelsMap) {
         if (parcel) {
           valueOfCarriedParcels += parcel.reward;
         }
@@ -431,7 +430,7 @@ export class BDIAgent {
     }
 
     // Check the intention of delivering the parcels we are carrying to a red tile according to its weight
-    if (this.#internalBelief.carriedParcelsCount >= 1) {
+    if (this.#internalBelief.me.carriedParcelsCount >= 1) {
       if (this.#internalBelief.currentTargetTile) {
         // Check if the current target tile is a green one (we just picked up a parcel)
         const currentGreenTile = this.#internalBelief.tileMap.getGreenTile(this.#internalBelief.currentTargetTile);
@@ -507,7 +506,7 @@ export class BDIAgent {
       const goPutDownIntentionReference = /**@type {GoPutDownIntention}*/(this.#intentionPlanQueue[goPutDownIntentionInQueueIndex].intention);
       let valueOfCarriedParcels = 0;
 
-      for (const [_, parcel] of this.#internalBelief.carriedParcelsMap) {
+      for (const [_, parcel] of this.#internalBelief.me.carriedParcelsMap) {
         if (parcel) {
           valueOfCarriedParcels += parcel.reward;
         }
@@ -534,7 +533,7 @@ export class BDIAgent {
         this.#sendToMate(this.#llmIntention);
         this.#llmIntention = undefined;
       }
-    } else if (this.#internalBelief.carriedParcelsCount == 0 && this.#llmIntention && LLMGoPutDownIntention.isTypeOf(this.#llmIntention)) {
+    } else if (this.#internalBelief.me.carriedParcelsCount == 0 && this.#llmIntention && LLMGoPutDownIntention.isTypeOf(this.#llmIntention)) {
       //If no put down are currently be performed, send to the other agent
       this.#llmIntention.sender = this.#internalBelief.me.id;
       this.#sendToMate(this.#llmIntention);

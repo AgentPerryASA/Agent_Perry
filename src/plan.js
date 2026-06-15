@@ -769,7 +769,7 @@ export class GoPickUpPlan extends PlanBase {
 
     if (result.length > 0) {
       for (const id of result) {
-        this.agent.internalBelief.carriedParcelsMap.set(id.id, undefined);
+        this.agent.internalBelief.me.carriedParcelsMap.set(id.id, undefined);
       }
 
     }
@@ -829,7 +829,7 @@ export class GoPutDownPlan extends PlanBase {
     const putDownResult = await this.agent.socket.emitPutdown();
 
     if (putDownResult.length > 0) {
-      this.agent.internalBelief.carriedParcelsMap.clear();
+      this.agent.internalBelief.me.carriedParcelsMap.clear();
     }
 
     this.agent.internalBelief.deviateAndPickupIntentionCounter = 0;
