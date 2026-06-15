@@ -110,7 +110,8 @@ export class BDIAgent {
       }, 100);
 
       //Ask the LLM for parameters fine tuning every 30 seconds
-      if (process.env.LLM) {
+      const enableLLM = process.env.LLM;
+      if (enableLLM && enableLLM == "enable") {
         setInterval(async () => {
           // Do not send a new request if we are waiting for the previous one
           if (this.#wasRequestForTuningSent) {
@@ -283,7 +284,7 @@ export class BDIAgent {
 
           const updatedParameters = /**@type {LLMUpdatedParameters}*/(message.updatedParameters);
 
-          console.log(updatedParameters)
+          console.log(updatedParameters);
           this.internalBelief.updateParameters(updatedParameters);
 
           this.#wasRequestForTuningSent = false;
