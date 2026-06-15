@@ -72,7 +72,6 @@ export class DeviateUsingPlannerIntention {
    * @param {LLMIntention | Intention} intention
    */
   isEqual(intention) {
-
     const instance = intention instanceof this.constructor;
     let arePathEqual = false;
     if (instance) {
@@ -92,7 +91,6 @@ export class DeviateUsingPlannerIntention {
     }
 
     return instance && arePathEqual;
-
   }
 
   /**
@@ -101,11 +99,9 @@ export class DeviateUsingPlannerIntention {
   static isTypeOf(intention) {
     return intention instanceof this;
   }
-
 }
 
 export class DeviateUsingAStarIntention {
-
   /**@type {Coordinates}*/
   #endPointCoordinates;
   /**@type {MapPoint[]}*/
@@ -170,7 +166,6 @@ export class DeviateUsingAStarIntention {
   static isTypeOf(intention) {
     return intention instanceof this;
   }
-
 }
 
 export class GoPickUpIntention {

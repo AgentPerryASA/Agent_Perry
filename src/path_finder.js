@@ -216,11 +216,16 @@ class Astar {
 
     if (resetAfterTimeout) {
       // Reset the neighbors after a while, so that the point is walkable again
+      // NOTE: a random period is chosen to desynchronize the two BDI agents
+      const m = 300;
+      const v = 100;
+      const resetDelay = m + Math.floor(Math.random() * v * 2) - v;
+
       setTimeout(() => {
         for (const neighbor of point.neighbors) {
           neighbor.updateNeighbors(this.#map);
         }
-      }, 300);
+      }, resetDelay);
     }
   }
 

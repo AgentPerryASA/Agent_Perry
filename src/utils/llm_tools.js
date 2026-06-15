@@ -18,7 +18,6 @@ export function calc(expression) {
  * @param {string} position 
  */
 export async function findExtremePosition(socket, agentId, position = "leftmost") {
-
   const request = new LLMMapRequestMessage();
   const response = await socket.emitAsk(agentId, request);
 
@@ -36,25 +35,26 @@ export async function findExtremePosition(socket, agentId, position = "leftmost"
     return "none";
   }
 
-  let leftMost = new MapPoint({ x: Number.MAX_SAFE_INTEGER, y: Number.MAX_SAFE_INTEGER, w: "perry" });
-  let rightMost = new MapPoint({ x: Number.MIN_SAFE_INTEGER, y: Number.MIN_SAFE_INTEGER, w: "perry" });
-  let topMost = new MapPoint({ x: Number.MIN_SAFE_INTEGER, y: Number.MIN_SAFE_INTEGER, w: "perry" });
-  let bottomMost = new MapPoint({ x: Number.MAX_SAFE_INTEGER, y: Number.MAX_SAFE_INTEGER, w: "perry" });
+  let leftMost = new MapPoint({ x: Number.MAX_SAFE_INTEGER, y: Number.MAX_SAFE_INTEGER, w: "" });
+  let rightMost = new MapPoint({ x: Number.MIN_SAFE_INTEGER, y: Number.MIN_SAFE_INTEGER, w: "" });
+  let topMost = new MapPoint({ x: Number.MIN_SAFE_INTEGER, y: Number.MIN_SAFE_INTEGER, w: "" });
+  let bottomMost = new MapPoint({ x: Number.MAX_SAFE_INTEGER, y: Number.MAX_SAFE_INTEGER, w: "" });
 
   for (let i = 0; i < map[0].length; i += 1) {
     for (let j = 0; j < map[i].length; j += 1) {
-      if (map[i][j] != '0') {
+      // Accept only red tiles
+      if (map[i][j] == '2') {
         if (i < leftMost.x) {
-          leftMost = new MapPoint({ x: i, y: j, w: "perry" });
+          leftMost = new MapPoint({ x: i, y: j, w: "" });
         }
         if (i > rightMost.x) {
-          rightMost = new MapPoint({ x: i, y: j, w: "perry" });
+          rightMost = new MapPoint({ x: i, y: j, w: "" });
         }
         if (j > topMost.y) {
-          topMost = new MapPoint({ x: i, y: j, w: "perry" });
+          topMost = new MapPoint({ x: i, y: j, w: "" });
         }
         if (j < bottomMost.y) {
-          bottomMost = new MapPoint({ x: i, y: j, w: "perry" });
+          bottomMost = new MapPoint({ x: i, y: j, w: "" });
         }
       }
     }
@@ -62,9 +62,9 @@ export async function findExtremePosition(socket, agentId, position = "leftmost"
 
   switch (position) {
     case "leftmost":
-      return `Coordinates: ${leftMost.x},${leftMost.y}`;;
+      return `Coordinates: ${leftMost.x},${leftMost.y}`;
     case "rightmost":
-      return `Coordinates: ${rightMost.x},${rightMost.y}`;;
+      return `Coordinates: ${rightMost.x},${rightMost.y}`;
     case "topmost":
       return `Coordinates: ${topMost.x},${topMost.y}`;
     case "bottommost":

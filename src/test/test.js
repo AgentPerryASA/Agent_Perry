@@ -2,7 +2,6 @@ import 'dotenv/config';
 import { BDIAgent } from '../bdi_agent.js';
 import { LLMAgent } from '../llm_agent.js';
 import { Admin } from './admin.js';
-import { Coordinates } from '../utils/coordinates.js';
 
 const token1 = process.env.TOKEN1;
 const token2 = process.env.TOKEN2;

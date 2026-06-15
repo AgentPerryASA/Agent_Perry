@@ -265,7 +265,6 @@ export class Beliefs {
     RandomFunction.setFunctionType(this.#randomFunctionType);
 
     this.#parcelMinScoreMultiplier = parameters.minScoreMultiplier;
-
   }
 
   /**

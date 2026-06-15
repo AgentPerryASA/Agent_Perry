@@ -129,18 +129,12 @@ class PlanBase {
    * @param {Intention} intention
    */
   async achieveSubIntention(intention) {
-    // if (!this.#subPlan) {
-    //   // Do not regenerate the plan if this already exists: means a recovery in in action
-    //   this.#subPlan = this.agent.selectPlan(intention);
-    // }
-
     this.#subPlan = this.agent.selectPlan(intention);
 
     if (this.#subPlan) {
       // @ts-ignore
       const isCompleted = await this.#subPlan.execute(intention);
       if (isCompleted) {
-        //this.#subPlan = undefined;
         return true;
       }
     }
@@ -241,7 +235,6 @@ export class GoToPlan extends PlanBase {
 
         //Check whether the blockPoint is a 5 or 5! tile: in such case, a crate is present and the planner need to be invoked. The planner need to guide the agent until the next cell in the already existent path that is not a 5 or 5! tile.
         if (blockPoint.isTileYellow) {
-
           const subIntention = new DeviateUsingPlannerIntention(path, blockPoint.indexOfPath - 1);
 
           const isCompleted = await this.achieveSubIntention(subIntention);
@@ -261,7 +254,6 @@ export class GoToPlan extends PlanBase {
               wasPlannerUsed = true;
             }
           }
-
         }
 
         if (!wasPlannerUsed) {
@@ -280,7 +272,7 @@ export class GoToPlan extends PlanBase {
 
           for (const coordinate of nearAgentTiles) {
             if (this.agent.internalBelief.isTileWithAgent(coordinate)) {
-              blockPointList.push(new MapPoint({ x: coordinate.x, y: coordinate.y, w: "perry" }));
+              blockPointList.push(new MapPoint({ x: coordinate.x, y: coordinate.y, w: "" }));
             }
           }
 
@@ -451,7 +443,6 @@ export class GoToPlan extends PlanBase {
       nearbyAgent = this.#searchNearbyAgent(path, i);
 
       if (wasDeviationPresent && nearbyAgent.nearbyAgentDetected && nearbyAgent.aheadTileIndex) {
-
         const newPath = await wasDeviationPresent;
         if (newPath.length != 0) {
           //Perform a deep copy of the path if it is valid: reset of the index, step and stepCoordinates is also necessary before proceeding
@@ -463,7 +454,6 @@ export class GoToPlan extends PlanBase {
           //In case a path wasn't found, return a blockpoint and let the execute cycle of GoToPlan handle the problem (it will check around perry and wait if no path are available)
           return new BlockPoint(path, step, i, false);
         }
-
       }
 
       //After taking the deviation, it is no longer needed: clear. Additionally, if the deviation was not taken this still means it is no longer necessary
@@ -531,8 +521,6 @@ export class GoToPlan extends PlanBase {
         i++;
         await new Promise((res) => setTimeout(res, this.agent.internalBelief.me.agentMovementDelay));
       }
-
-
     }
 
     return;
@@ -547,7 +535,6 @@ export class GoToPlan extends PlanBase {
 }
 
 export class DeviateUsingAStarPlan extends PlanBase {
-
   /**@type {MapPoint[] | undefined} */
   #path;
 
@@ -563,7 +550,6 @@ export class DeviateUsingAStarPlan extends PlanBase {
   }
 
   /**
-   * 
    * @param {DeviateUsingAStarIntention} intention 
    */
   async execute(intention) {
@@ -585,7 +571,6 @@ export class DeviateUsingAStarPlan extends PlanBase {
     this.#path = result;
 
     return true;
-
   }
 
   /**
@@ -678,7 +663,7 @@ export class DeviateUsingPlannerPlan extends PlanBase {
           new MapPoint({
             x: this.agent.internalBelief.me.coordinates.x,
             y: this.agent.internalBelief.me.coordinates.y,
-            w: "perry",
+            w: "",
           }, true),
         );
 
@@ -688,7 +673,7 @@ export class DeviateUsingPlannerPlan extends PlanBase {
           //Extract x and y coordinates by removing TILE and the _ from the second element of args vector
           const [x, y] = step.args[1].slice(4).split("_").map(Number);
 
-          const mapPoint = new MapPoint({ x, y, w: "perry" }, true);
+          const mapPoint = new MapPoint({ x, y, w: "" }, true);
 
           //Push the new tile to the array
           newPath.push(mapPoint);

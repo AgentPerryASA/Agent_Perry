@@ -124,7 +124,6 @@ export class BDIAgent {
 
         }, 30 * 1000);
       }
-
     });
   }
 
@@ -214,8 +213,6 @@ export class BDIAgent {
             coordinates = new Coordinates(this.#internalBelief.me.coordinates.x, this.#internalBelief.me.coordinates.y);
           }
 
-
-
           this.#llmIntention = new LLMGoPutDownIntention(
             coordinates,
             /**@type {string}*/(message.value),
@@ -287,6 +284,7 @@ export class BDIAgent {
 
           const updatedParameters = /**@type {LLMUpdatedParameters}*/(message.updatedParameters);
 
+          console.log(updatedParameters)
           this.internalBelief.updateParameters(updatedParameters);
 
           this.#wasRequestForTuningSent = false;
