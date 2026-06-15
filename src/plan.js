@@ -1,5 +1,6 @@
 /** @typedef Plan @type { GoToPlan | GoPickUpPlan  | GoPutDownPlan | DeviateAndPickUpPlan | DeviateUsingAStarPlan | DeviateUsingPlannerPlan | LLMGreenRedLightPlan } */
 /** @typedef Intention @type { import("./intention.js").Intention } */
+/** @typedef IOAgent @type { import("./me.js").IOAgent } */
 
 import { BDIAgent } from "./bdi_agent.js";
 import { Coordinates } from "./utils/coordinates.js";
@@ -16,14 +17,14 @@ import { MapPoint } from "./utils/path_utils.js";
 import { LLMGoPickUpIntention, LLMGoPutDownIntention, LLMGoToIntention, LLMGreenRedLightIntention, LLMIntention } from "./llm_intention.js";
 
 class NearbyAgent {
-  /**@type {Boolean}*/
+  /**@type {IOAgent | undefined}*/
   #nearbyAgentDetected;
 
   /**@type {Number | undefined}*/
   #aheadTileIndex;
 
   /**
-   * @param {Boolean} nearbyAgentDetected 
+   * @param {IOAgent | undefined} nearbyAgentDetected 
    * @param {Number | undefined} aheadTileIndex 
    */
   constructor(nearbyAgentDetected, aheadTileIndex) {
@@ -31,7 +32,7 @@ class NearbyAgent {
     this.#aheadTileIndex = aheadTileIndex;
   }
 
-  get nearbyAgentDetected() {
+  get agent() {
     return this.#nearbyAgentDetected;
   }
 
@@ -335,13 +336,14 @@ export class GoToPlan extends PlanBase {
     for (let i = startIndex; i < startIndex + this.#tilesToCheckForAgents; i += 1) {
       if (i < path.length) {
         const aheadTileCoordinates = new Coordinates(path[i].x, path[i].y);
-        if (this.agent.internalBelief.isTileWithAgent(aheadTileCoordinates)) {
-          return new NearbyAgent(true, i);
+        const agent = this.agent.internalBelief.isTileWithAgent(aheadTileCoordinates);
+        if (agent) {
+          return new NearbyAgent(agent, i);
         }
       }
     }
 
-    return new NearbyAgent(false, undefined);
+    return new NearbyAgent(undefined, undefined);
   }
 
   /**
@@ -433,7 +435,15 @@ export class GoToPlan extends PlanBase {
       }
 
       //Check for the present of an agent in next tiles. First check for a future tile two tile ahead, next check the next cell (situation could have change and the change of path could be no longer necessary or it could require an updated one). To repeat the search later without declaring another variable, this is not left as a const
-      if (nearbyAgent.nearbyAgentDetected && nearbyAgent.aheadTileIndex) {
+      if (nearbyAgent.agent && nearbyAgent.aheadTileIndex) {
+        if (
+          this.agent.internalBelief.me.id != this.agent.internalBelief.me.llmId &&
+          nearbyAgent.agent.id == this.agent.internalBelief.me.mateId
+        ) {
+          // If the second BDI agent (the one not associated with the LLM agent) collides with the mate, waits a bit before computing a deviation, otherwise the two BDI agents would react in the same way
+          await new Promise(res => setTimeout(res, 500));
+        }
+
         await this.#searchAndStoreDeviation(path, nearbyAgent.aheadTileIndex);
       }
 
@@ -442,7 +452,7 @@ export class GoToPlan extends PlanBase {
 
       nearbyAgent = this.#searchNearbyAgent(path, i);
 
-      if (wasDeviationPresent && nearbyAgent.nearbyAgentDetected && nearbyAgent.aheadTileIndex) {
+      if (wasDeviationPresent && nearbyAgent.agent && nearbyAgent.aheadTileIndex) {
         const newPath = await wasDeviationPresent;
         if (newPath.length != 0) {
           //Perform a deep copy of the path if it is valid: reset of the index, step and stepCoordinates is also necessary before proceeding

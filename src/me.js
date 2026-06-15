@@ -1,7 +1,6 @@
 /** @typedef IOParcel @type {import("@unitn-asa/deliveroo-js-sdk").IOParcel}} */
 /**@typedef IOAgent @type {import("@unitn-asa/deliveroo-js-sdk").IOAgent} */
 
-import { Parcel } from "./utils/beliefs_utils.js";
 import { Coordinates } from "./utils/coordinates.js";
 
 export class Me {

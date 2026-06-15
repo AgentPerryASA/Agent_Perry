@@ -548,11 +548,9 @@ export class Beliefs {
   isTileWithAgent(tileCoordinates) {
     for (const agent of this.#nearAgentList) {
       if (agent.x == tileCoordinates.x && agent.y == tileCoordinates.y) {
-        return true;
+        return agent;
       }
     }
-
-    return false;
   }
 
   getBeliefForPlanner() {
