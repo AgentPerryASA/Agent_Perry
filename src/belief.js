@@ -23,9 +23,6 @@ export class Beliefs {
   /**@type {WorldMap} */
   #tileMap;
 
-  /**@type {Map<string,IOParcel | undefined>}*/
-  #carriedParcelsMap;
-
   /**@type {number} */
   #parcelAvgScore;
 
@@ -103,7 +100,6 @@ export class Beliefs {
   constructor() {
     this.#parcelList = [];
     this.#tileMap = new WorldMap([], [], [], []);
-    this.#carriedParcelsMap = new Map();
     this.#parcelAvgScore = 0;
     this.#parcelVarScore = 0;
     this.#parcelMinScore = 0;
@@ -140,14 +136,6 @@ export class Beliefs {
 
   get tileMap() {
     return this.#tileMap;
-  }
-
-  get carriedParcelsCount() {
-    return this.#carriedParcelsMap.size;
-  }
-
-  get carriedParcelsMap() {
-    return this.#carriedParcelsMap;
   }
 
   get parcelList() {
@@ -288,13 +276,15 @@ export class Beliefs {
       ); // Parcel from sensed list
 
       if (currentParcelFromSensedList != undefined) {
+
+        if (currentParcelFromSensedList.carriedBy == this.me.id) {
+          //If the sensed parcel is carried by perry, update the carriedParcelsMap. This additional check keeps the list updated, but the element is originally added during the pickup of one or more parcels, at least the id since the returned list of picked up parcel does not include the parcel itself but only the id
+          this.#me.carriedParcelsMap.set(currentParcelFromSensedList.id, currentParcelFromSensedList);
+        }
+
         // If the current parcel was in the sensed list, then update value with that.
         // A check to see if it is now carried is necessary, as well as a check to see whether
         // the parcel is still good to be picked up (>= min value).
-        if (currentParcelFromSensedList.carriedBy == this.me.id) {
-          //If the sensed parcel is carried by perry, update the carriedParcelsMap
-          this.#carriedParcelsMap.set(currentParcelFromSensedList.id, currentParcelFromSensedList);
-        }
 
         //Check if the parcel is not carried by anyone, has a value higher than a minimum score an is in a green tile (ignore parcel putted down by other agents)
         if (

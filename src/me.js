@@ -15,8 +15,8 @@ export class Me {
   #penalty;
   /**@type {Coordinates} */
   #coordinates;
-  /**@type {Parcel[]} */
-  #carriedParcelList;
+  /**@type {Map<string,IOParcel | undefined>}*/
+  #carriedParcelsMap;
   /**@type {string} */
   #mateId;
   /**@type {string}*/
@@ -37,7 +37,7 @@ export class Me {
     this.#score = score;
     this.#penalty = penalty;
     this.#coordinates = coordinates;
-    this.#carriedParcelList = [];
+    this.#carriedParcelsMap = new Map();
     this.#mateId = "";
     this.#llmId = "";
     this.#agentMovementDelay = 0;
@@ -63,10 +63,6 @@ export class Me {
     return this.#coordinates;
   }
 
-  get carriedParcelList() {
-    return this.#carriedParcelList;
-  }
-
   get mateId() {
     return this.#mateId;
   }
@@ -77,6 +73,14 @@ export class Me {
 
   get agentMovementDelay() {
     return this.#agentMovementDelay;
+  }
+
+  get carriedParcelsCount() {
+    return this.#carriedParcelsMap.size;
+  }
+
+  get carriedParcelsMap() {
+    return this.#carriedParcelsMap;
   }
 
   set coordinates(c) {
@@ -108,49 +112,4 @@ export class Me {
     this.#penalty = agent.penalty;
   }
 
-  /**
-   * @param {IOParcel[]} sensedParcelsList
-   */
-  reviseCarriedParcelList(sensedParcelsList) {
-    // Assume that no parcel is dropped after being picked up, therefore, it is not possible to pickup a previously picked up parcel.
-    // Notice that onSensing is triggered when the agent has a parcel, even if it is not moving
-    const endTime = Date.now() + 0.01 * this.#carriedParcelList.length;
-
-    let sensedParcelsMap = new Map();
-    if (sensedParcelsList.length > 0) {
-      //Filter only parcels carried by the agent itself
-      for (let i = 0; i < sensedParcelsList.length; i += 1) {
-        const p = sensedParcelsList[i];
-        if (p.carriedBy && p.carriedBy == this.#id) {
-          sensedParcelsMap.set(p.id, p);
-        }
-      }
-    }
-
-    for (let i = 0; i < this.#carriedParcelList.length; i += 1) {
-      const currentParcelFromBelief = this.#carriedParcelList[i];
-      const currentParcelFromSensedList = sensedParcelsMap.get(
-        currentParcelFromBelief.parcel.id,
-      );
-      if (currentParcelFromSensedList != undefined) {
-        // If parcel was already present in list, update its information
-        currentParcelFromBelief.parcel = currentParcelFromSensedList;
-        currentParcelFromBelief.lastUpdateTimestamp = endTime;
-        currentParcelFromBelief.cumulatedTime +=
-          (endTime - currentParcelFromBelief.lastUpdateTimestamp) / 1000;
-        sensedParcelsMap.delete(currentParcelFromBelief.parcel.id);
-      } else {
-        // If parcel is not present in the sensed list, this means the agent no longer carries it,
-        // therefore, it needs to be dropped from the list
-        this.#carriedParcelList.splice(i);
-        i -= 1;
-      }
-    }
-
-    // Finally, add the new parcels that were picked up
-    for (const [_, parcel] of sensedParcelsMap) {
-      let newParcel = new Parcel(parcel, Date.now());
-      this.#carriedParcelList.push(newParcel);
-    }
-  }
 }
