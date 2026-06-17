@@ -19,7 +19,6 @@
   "main": "main.js",
   "scripts": {
     "test": "clear; node src/test/test.js",
-    "build": "npm install",
     "start": "clear; node main.js",
     "log": "clear; node main.js | tee run.log"
   },

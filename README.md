@@ -25,7 +25,7 @@ The goal was to create an agent capable of playing the game <a href="https://del
 After downloading the latest available release, run:
 
 ```sh
-npm start build
+npm install
 ```
 
 This will install all of the necessay dependencies.
@@ -68,7 +68,7 @@ npm start
 
 To start and log eventual output, run:
 ```sh
-npm start log
+npm run log
 ```
 
 To start and test the admin-issued task, run:
