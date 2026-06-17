@@ -121,7 +121,6 @@ export class BDIAgent {
           this.#wasRequestForTuningSent = true;
 
           await this.#requestParametersTuningToLLM();
-
         }, 30 * 1000);
       }
     });

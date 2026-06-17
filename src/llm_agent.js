@@ -132,20 +132,21 @@ export class LLMAgent {
       have to deliver them to the red ones. You will periodically receive these data as input in this exactly order:
 
       - score of our agent
+      - penalty of our agent, slow down if it is much lower than the previous run (e.g. -150 w.r.t. -50)
       - max number of parcels that can spawn in map
       - average score per parcel
       - variance score per parcel (final score is a random in [avg - var, avg + var])
       - number of agents
       - mean of attempts to follow a path
-      - types of functions to select random destination tiles (used to explore the map)
+      - type of function to select random destination tiles (used to explore the map)
 
       Together with the previous parameters' value, in this exactly order:
 
       - number of possible deviations to pick up a parcel (between 2 and 5)
       - number of tiles in front of our agent to check an obstacle on the path (between 2 and 4)
       - number of tiles to ignore after an obstacle on the path (between 2 and 4)
-      - delay in sending movement request to the server (between 0 and 100 ms)
-      - type of function to randomize the destination (cosine for higher randomicity, hyperbola for privileging close tiles)
+      - delay in sending movement request to the server (between 0 and 50 ms, higher means slow)
+      - type of function to randomize the destination ('cosine' for higher randomicity, 'hyperbola' for privileging close tiles)
       - multiplier m to get parcelMinScore = parcelMaxScore * m (between 0.2 and 0.6)
 
       finally, some additional information may or may not be included.
@@ -574,7 +575,7 @@ export class LLMAgent {
     const numDeviation = this.#clamp(Number(values[0]), 2, 5);
     const tilesToCheckBlock = this.#clamp(Number(values[1]), 2, 4);
     const blocksAfterAgent = this.#clamp(Number(values[2]), 2, 4);
-    const movementDelay = this.#clamp(Number(values[3].match(/\d+/)), 0, 100);
+    const movementDelay = this.#clamp(Number(values[3].match(/\d+/)), 0, 50);
     const randomFunction = values[4];
     const minScoreMultiplier = this.#clamp(Number(values[5]), 0.2, 0.6);
 

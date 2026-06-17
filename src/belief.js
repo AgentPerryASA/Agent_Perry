@@ -597,6 +597,7 @@ export class Beliefs {
     const beliefs = `
     input:
       - score: ${this.me.score}
+      - penalty: ${this.me.penalty}
       - max number of parcels: ${this.#maxParcelsPresent}
       - average score per parcel: ${this.#parcelAvgScore}
       - variance score of parcels: ${this.#parcelVarScore}

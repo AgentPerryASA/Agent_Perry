@@ -373,14 +373,10 @@ export class GoToPlan extends PlanBase {
     //Preparing list with all tiles to ignore: TILES_TO_IGNORE_FOR_AGENTS tiles of the path after the blocked tile
     const tilesToIgnoreList = [];
     for (let i = 0; i < this.#tilesToIgnoreForAgents; i += 1) {
-
       //Ignore selected tiles (except for the destination)
       if (i + aheadTileIndex < path.length - 1) {
-
         tilesToIgnoreList.push(path[i + aheadTileIndex]);
-
       }
-
     }
 
     //Calculate deviation using A*
@@ -511,8 +507,6 @@ export class GoToPlan extends PlanBase {
 
       if (!movedHorizontally && !movedVertically && (a.coordinates.x != step.x || a.coordinates.y != step.y)) {
         // Agent did not move
-        //console.log("FAIL", movedHorizontally, movedVertically, "from", a.coordinates.x, a.coordinates.y, "to", step.x, step.y);
-
         if (this.agent.internalBelief.tileMap.getYellowTile(stepCoordinates)) {
           //Stop the execution if the tile is yellow: if this happen here, this means that something in the environment has changed and planner has to be invoked again to go over the crate
           return new BlockPoint(path, step, i, true);
@@ -529,7 +523,7 @@ export class GoToPlan extends PlanBase {
         // Agent moved
         this.#moveAttemptCount = 0;
         i++;
-        await new Promise((res) => setTimeout(res, this.agent.internalBelief.me.agentMovementDelay));
+        await new Promise((res) => setTimeout(res, 30 + this.agent.internalBelief.me.agentMovementDelay));
       }
     }
 
